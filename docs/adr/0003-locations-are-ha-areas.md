@@ -1,0 +1,3 @@
+# Locations are HA areas, no manual camera map
+
+A camera's Location is the HA Area the camera's device is assigned to, read live at trigger time; the integration keeps no camera-to-location map of its own. Rationale: areas are already maintained in HA, and a second map would drift from reality. Consequences: a Location can only be an existing HA area (a "garden" area must be created before garden cameras track), unassigned cameras are skipped with a setup error, and renaming an area changes tracker state text. To stay unambiguous, tracker state carries the area display name while an attribute carries the area ID, since two areas may share a display name.

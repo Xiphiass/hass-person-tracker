@@ -1,0 +1,3 @@
+# Custom integration, not automations
+
+Track person locations from camera detections plus LLM identification. We decided to implement this as a Home Assistant custom integration (device_tracker platform) rather than a bundle of automations and helpers, because the workflow needs durable per-person state (last location, last seen, expiry), per-camera trigger debouncing, per-person reference-image management, and unknown-person handling — program logic, which automations model only as hidden helper state. The automation alternative (extending HA's shipped "AI camera analysis" blueprint) would force per-person state into input helpers and break down as cameras and people grow; it also cannot own the reference-image and expiry semantics cleanly.
