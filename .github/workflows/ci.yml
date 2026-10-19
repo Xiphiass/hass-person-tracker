@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python 3.14
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.5.0"
+      - name: Install dependencies
+        run: |
+          uv venv
+          # Install testing dependencies. We don't have a full dependency list in pyproject.toml 
+          # yet, so we manually install the ones identified in previous steps.
+          uv pip install homeassistant==2026.10.2 numpy==2.2.6 PyTurboJPEG==1.8.3 av==19.0.0 paho-mqtt hassil gazetteer-matcher home-assistant-intents pytest pytest-asyncio pytest-aiohttp freezegun pytest-socket requests-mock respx syrupy execnet pytest-freezer
+      - name: Run tests
+        run: |
+          .venv/bin/pytest tests/components/person_tracker/
