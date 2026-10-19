@@ -1,0 +1,13 @@
+
+async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Set up Person Tracker from a config entry."""
+    _LOGGER.info("Person tracker setup entry started: %s", entry.entry_id)
+    try:
+        data = await _async_build_entry_data(hass, entry)
+    except Exception:
+        _LOGGER.exception("Error building entry data for %s", entry.entry_id)
+        raise
+    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = data
+    _LOGGER.info("Person tracker setup entry data built: %s", entry.entry_id)
+    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    return True

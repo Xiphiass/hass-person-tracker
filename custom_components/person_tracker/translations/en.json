@@ -1,0 +1,76 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Person Tracker",
+        "description": "Add the people you want to track.",
+        "data": {
+          "name": "Person name",
+          "ttl": "TTL (minutes)",
+          "authoritative_tracker": "Authoritative tracker (optional)"
+        }
+      },
+      "person_more": {
+        "title": "Person Tracker",
+        "description": "Add another person?",
+        "data": {
+          "add_person": "Add another person"
+        }
+      },
+      "person_add": {
+        "title": "Person Tracker",
+        "description": "Add another person to track.",
+        "data": {
+          "name": "Person name",
+          "ttl": "TTL (minutes)",
+          "authoritative_tracker": "Authoritative tracker (optional)"
+        }
+      },
+      "camera_first": {
+        "title": "Person Tracker",
+        "description": "Add the cameras to watch. A camera must be assigned to an HA area and needs at least one trigger binary sensor.",
+        "data": {
+          "camera": "Camera",
+          "triggers": "Trigger binary sensor(s)"
+        }
+      },
+      "cameras_more": {
+        "title": "Person Tracker",
+        "description": "Add another camera?",
+        "data": {
+          "add_camera": "Add another camera"
+        }
+      },
+      "camera_add": {
+        "title": "Person Tracker",
+        "description": "Add another camera to watch.",
+        "data": {
+          "camera": "Camera",
+          "triggers": "Trigger binary sensor(s)"
+        }
+      },
+      "ai_task": {
+        "title": "Person Tracker",
+        "description": "Optionally select the AI task entity used for identification. By default the HA default AI task entity is used.",
+        "data": {
+          "ai_task_entity": "AI task entity (optional)"
+        }
+      }
+    },
+    "error": {
+      "invalid_person_name": "Invalid person name. Names must not be empty, may not contain path separators, and are used as folder names.",
+      "unique_person": "This person is already in the list.",
+      "invalid_authoritative_tracker": "The authoritative tracker must be an existing device_tracker entity.",
+      "invalid_camera": "The camera must be an existing camera entity.",
+      "duplicate_camera": "This camera is already in the map.",
+      "camera_without_area": "This camera is not assigned to an HA area. Assign an area (Settings → Areas) first.",
+      "no_triggers": "This camera needs at least one trigger binary sensor.",
+      "invalid_trigger": "One or more triggers are not binary_sensor entities.",
+      "invalid_ai_task_entity": "The AI task entity must be an existing AI task entity.",
+      "no_ai_task_entity": "No AI task entity is available. Configure an AI provider and set a default AI task entity, or select one here."
+    },
+    "abort": {
+      "single_instance_allowed": "Only a single configuration allowed."
+    }
+  }
+}
