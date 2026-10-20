@@ -6,7 +6,6 @@ requires-python = ">=3.14"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-norecursedirs = ["testing_config", ".git", ".venv"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 

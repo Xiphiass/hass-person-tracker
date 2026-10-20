@@ -1,11 +1,12 @@
 """Track household members' locations via camera detections and AI Task
 identification.
 
-Everything is configured through a single config entry (ADR 0004):
-- the people to track (identity + optional TTL + optional authoritative
-  tracker),
-- the cameras to watch with their trigger binary sensors,
-- an optional AI task entity (defaults to the HA default AI task entity).
+Configuration is a UI config entry (ADR 0005):
+- the entry holds the global settings: the cameras to watch with their
+  trigger binary sensors, and an optional AI task entity (defaults to the HA
+  default AI task entity); editable via Reconfigure,
+- each person to track (identity + optional TTL + optional authoritative
+  tracker) is a config subentry of the entry.
 
 Reference images live on disk under
 ``<config>/person_tracker/people/<person>/`` and are re-discovered on every
@@ -15,10 +16,8 @@ setup and reload (ADR 0005).
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 from typing import Any
 
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryError, ConfigEntryNotReady
 from homeassistant.helpers import config_validation as cv
@@ -28,25 +27,22 @@ from .const import (
     CONF_AUTHORITATIVE_TRACKER,
     CONF_CAMERA,
     CONF_CAMERAS,
-    CONF_PEOPLE,
     CONF_PERSON_NAME,
     CONF_TTL,
     CONF_TRIGGERS,
     DEFAULT_TTL_MINUTES,
     DOMAIN,
-    ERR_INVALID_AI_TASK_ENTITY,
-    ERR_NO_AI_TASK_ENTITY,
     PLATFORMS,
+    SUBENTRY_PERSON,
 )
 from .helpers import (
     discover_reference_images,
     get_default_ai_task_entity_id,
-    get_entity_area_id,
-    get_entity_domain,
+    get_person_images_dir,
     is_entity_pending,
-    valid_triggers,
 )
-from .models import Camera, Person, PersonTrackerData, person_slug
+from .models import Camera, Person, PersonTrackerConfigEntry, PersonTrackerData
+from .validation import ai_task_error, camera_error, is_trigger
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -58,37 +54,45 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     return True
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    _LOGGER.info("Person tracker setup entry: %s", entry.entry_id)
-    data = await _async_build_entry_data(hass, entry)
-    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = data
+async def async_setup_entry(
+    hass: HomeAssistant, entry: PersonTrackerConfigEntry
+) -> bool:
+    """Set up the entry and its person subentries."""
+    entry.runtime_data = await _async_build_entry_data(hass, entry)
+    # Reconfiguring the entry or adding/editing/removing a person updates the
+    # entry; reload to apply it.
+    entry.async_on_unload(entry.add_update_listener(_async_reload_entry))
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
 
 
-async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+async def async_unload_entry(
+    hass: HomeAssistant, entry: PersonTrackerConfigEntry
+) -> bool:
     """Unload a config entry."""
-    unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
-    if unload_ok:
-        hass.data[DOMAIN].pop(entry.entry_id, None)
-    return unload_ok
+    return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+
+
+async def _async_reload_entry(
+    hass: HomeAssistant, entry: PersonTrackerConfigEntry
+) -> None:
+    """Reload the entry after its data or subentries changed."""
+    hass.config_entries.async_schedule_reload(entry.entry_id)
 
 
 async def _async_build_entry_data(
-    hass: HomeAssistant, entry: ConfigEntry
+    hass: HomeAssistant, entry: PersonTrackerConfigEntry
 ) -> PersonTrackerData:
     """Validate the entry against live HA state and build the runtime data.
 
     Raises ConfigEntryNotReady while a configured entity is registered but its
     integration has not loaded yet, so HA retries setup. Raises
-    ConfigEntryError when the entry cannot work at all (missing AI task
-    entity). Cameras without an HA area are skipped with a visible error.
+    ConfigEntryError when the entry cannot work at all (no usable AI task
+    entity). Cameras and triggers that are no longer valid are skipped with a
+    visible error.
     """
     override = entry.data.get(CONF_AI_TASK_ENTITY)
     ai_task_entity_id = override or get_default_ai_task_entity_id(hass)
-    if ai_task_entity_id is None:
-        raise ConfigEntryError(ERR_NO_AI_TASK_ENTITY)
-
     camera_configs = entry.data.get(CONF_CAMERAS, [])
     if pending := [
         entity_id
@@ -97,31 +101,22 @@ async def _async_build_entry_data(
             *(c[CONF_CAMERA] for c in camera_configs),
             *(t for c in camera_configs for t in c.get(CONF_TRIGGERS, [])),
         )
-        if is_entity_pending(hass, entity_id)
+        if entity_id and is_entity_pending(hass, entity_id)
     ]:
         raise ConfigEntryNotReady(
             f"Waiting for {', '.join(pending)} to become available"
         )
 
-    if override and get_entity_domain(hass, override) != "ai_task":
-        raise ConfigEntryError(ERR_INVALID_AI_TASK_ENTITY)
+    if error := ai_task_error(hass, override):
+        raise ConfigEntryError(error)
 
     people: dict[str, Person] = {}
-    slugs: set[str] = set()
-    for person_data in entry.data.get(CONF_PEOPLE, []):
-        name = person_data[CONF_PERSON_NAME]
-        if (slug := person_slug(name)) in slugs:
-            _LOGGER.error(
-                "Person %r collides with another person's name (names may not "
-                "differ only in case or punctuation); skipping it.",
-                name,
-            )
-            continue
-        slugs.add(slug)
+    for subentry in entry.get_subentries_of_type(SUBENTRY_PERSON):
         person = Person(
-            name=name,
-            ttl_minutes=person_data.get(CONF_TTL, DEFAULT_TTL_MINUTES),
-            authoritative_tracker=person_data.get(CONF_AUTHORITATIVE_TRACKER),
+            subentry_id=subentry.subentry_id,
+            name=subentry.data[CONF_PERSON_NAME],
+            ttl_minutes=subentry.data.get(CONF_TTL, DEFAULT_TTL_MINUTES),
+            authoritative_tracker=subentry.data.get(CONF_AUTHORITATIVE_TRACKER),
         )
         person.reference_images = await hass.async_add_executor_job(
             discover_reference_images, hass, person.name
@@ -131,24 +126,20 @@ async def _async_build_entry_data(
                 "Person %r has no reference images yet; place some under "
                 "%s to enable identification.",
                 person.name,
-                Path(hass.config.path(DOMAIN, "people", person.name)),
+                get_person_images_dir(hass, person.name),
             )
-        people[person.name] = person
+        people[subentry.subentry_id] = person
 
     cameras: dict[str, Camera] = {}
     for camera_data in camera_configs:
         camera_entity_id = camera_data[CONF_CAMERA]
-        area_id = get_entity_area_id(hass, camera_entity_id)
-        if area_id is None:
+        if camera_error(hass, camera_entity_id):
             _LOGGER.error(
-                "Camera %s is not assigned to an HA area; skipping it. "
-                "Assign an area (Settings -> Areas) and reload this "
-                "integration.",
-                camera_entity_id,
+                "%s is no longer a camera entity; skipping it.", camera_entity_id
             )
             continue
         configured_triggers = camera_data.get(CONF_TRIGGERS, [])
-        triggers = valid_triggers(hass, configured_triggers)
+        triggers = [t for t in configured_triggers if is_trigger(hass, t)]
         if dropped := [t for t in configured_triggers if t not in triggers]:
             _LOGGER.error(
                 "Camera %s: triggers %s are no longer binary_sensor entities "
@@ -163,11 +154,10 @@ async def _async_build_entry_data(
             )
             continue
         cameras[camera_entity_id] = Camera(
-            entity_id=camera_entity_id, area_id=area_id, triggers=triggers
+            entity_id=camera_entity_id, triggers=triggers
         )
 
     return PersonTrackerData(
-        entry_id=entry.entry_id,
         ai_task_entity_id=ai_task_entity_id,
         people=people,
         cameras=cameras,

@@ -2,41 +2,16 @@
 
 from __future__ import annotations
 
-import logging
-import re
 from pathlib import Path
 
 from homeassistant.components import ai_task as ai_task_component
-from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import ATTR_RESTORED, STATE_UNAVAILABLE
+from homeassistant.const import ATTR_RESTORED
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import area_registry as ar
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 
-from .const import (
-    CONF_AI_TASK_ENTITY,
-    CONF_TRIGGERS,
-    DOMAIN,
-    PEOPLE_DIR,
-    REFERENCE_IMAGE_EXTENSIONS,
-)
-
-_LOGGER = logging.getLogger(__name__)
-
-_PERSON_NAME_MAX_LEN = 100
-_PERSON_NAME_INVALID = re.compile(r"[/\\<>:\"|?*\s]|^\.*$")
-
-
-def is_valid_person_name(name: str) -> bool:
-    """Return True if *name* is a usable person name.
-
-    Names are used as folder names and unique keys, so whitespace and
-    path/OS-reserved characters are not allowed.
-    """
-    if not name or len(name) > _PERSON_NAME_MAX_LEN:
-        return False
-    return not _PERSON_NAME_INVALID.search(name)
+from .const import DOMAIN, PEOPLE_DIR, REFERENCE_IMAGE_EXTENSIONS
 
 
 def get_entity_area_id(hass: HomeAssistant, entity_id: str) -> str | None:
@@ -54,16 +29,15 @@ def get_entity_area_id(hass: HomeAssistant, entity_id: str) -> str | None:
     return None
 
 
-def get_area_name(hass: HomeAssistant, area_id: str) -> str:
-    """Return the name for *area_id*, or the ID itself if name unknown."""
-    area = ar.async_get(hass).async_get_area(area_id)
-    return area.name if area is not None else area_id
+def get_camera_area(hass: HomeAssistant, entity_id: str) -> ar.AreaEntry | None:
+    """Return the HA area (Location) of camera *entity_id*, or None.
 
-
-def get_entity_domain(hass: HomeAssistant, entity_id: str) -> str | None:
-    """Return the domain of *entity_id*'s current state, or None."""
-    state = hass.states.get(entity_id)
-    return state.domain if state is not None else None
+    Called when a camera's trigger fires, so area changes made after setup
+    apply without a reload (ADR 0003).
+    """
+    if (area_id := get_entity_area_id(hass, entity_id)) is None:
+        return None
+    return ar.async_get(hass).async_get_area(area_id)
 
 
 def is_entity_pending(hass: HomeAssistant, entity_id: str) -> bool:
@@ -87,21 +61,6 @@ def get_default_ai_task_entity_id(hass: HomeAssistant) -> str | None:
     return None
 
 
-def is_usable_ai_task_entity(hass: HomeAssistant, entity_id: str) -> bool:
-    """Return True if *entity_id* is an available ai_task entity."""
-    state = hass.states.get(entity_id)
-    return (
-        state is not None
-        and state.domain == "ai_task"
-        and state.state != STATE_UNAVAILABLE
-    )
-
-
-def is_camera_in_area(hass: HomeAssistant, entity_id: str) -> bool:
-    """Return True if camera is assigned to an area."""
-    return get_entity_area_id(hass, entity_id) is not None
-
-
 def get_person_images_dir(hass: HomeAssistant, person_name: str) -> Path:
     """Return user-managed reference-image folder for *person_name*."""
     return Path(hass.config.path(DOMAIN, PEOPLE_DIR, person_name))
@@ -120,12 +79,3 @@ def discover_reference_images(hass: HomeAssistant, person_name: str) -> list[Pat
         for path in folder.iterdir()
         if path.is_file() and path.suffix.lower() in REFERENCE_IMAGE_EXTENSIONS
     )
-
-
-def valid_triggers(hass: HomeAssistant, triggers: list[str]) -> list[str]:
-    """Filter *triggers* down to entities currently binary sensors."""
-    return [
-        trigger
-        for trigger in triggers
-        if get_entity_domain(hass, trigger) == "binary_sensor"
-    ]

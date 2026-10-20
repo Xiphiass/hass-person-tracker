@@ -1,1 +1,1 @@
-"""Tests for Home Assistant."""
+"""Person tracker tests."""

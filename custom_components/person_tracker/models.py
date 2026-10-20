@@ -6,7 +6,11 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from homeassistant.config_entries import ConfigEntry
+
 from .const import DEFAULT_TTL_MINUTES
+
+type PersonTrackerConfigEntry = ConfigEntry[PersonTrackerData]
 
 
 def person_slug(name: str) -> str:
@@ -22,6 +26,8 @@ class Person:
     ``last_camera``; ticket #2 establishes identity only.
     """
 
+    # The person's config subentry; stable across renames.
+    subentry_id: str
     name: str
     ttl_minutes: int = DEFAULT_TTL_MINUTES
     authoritative_tracker: str | None = None
@@ -38,31 +44,29 @@ class Person:
         """How long a sighting stays valid before the state becomes unknown."""
         return timedelta(minutes=self.ttl_minutes)
 
-    @property
-    def slug(self) -> str:
-        """Filesystem- and slug-safe key for this person."""
-        return person_slug(self.name)
-
 
 @dataclass
 class Camera:
-    """A camera that passed setup validation, with its resolved HA area."""
+    """A camera that passed setup validation.
+
+    Its HA area is not stored; it is looked up when a trigger fires (ADR 0003).
+    """
 
     entity_id: str
-    area_id: str
     triggers: list[str] = field(default_factory=list)
 
 
 @dataclass
 class PersonTrackerData:
-    """Per-config-entry runtime data shared with the entity platforms."""
+    """Runtime data of the config entry, shared with the entity platforms."""
 
-    entry_id: str
     ai_task_entity_id: str | None
+    # Keyed by subentry ID.
     people: dict[str, Person]
+    # Keyed by camera entity ID.
     cameras: dict[str, Camera]
 
     @property
     def person_names(self) -> set[str]:
-        """All known person names (identity data from the config entry)."""
-        return set(self.people)
+        """All known person names."""
+        return {person.name for person in self.people.values()}
