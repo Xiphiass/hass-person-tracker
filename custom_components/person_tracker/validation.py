@@ -19,11 +19,10 @@ from .const import (
     ERR_INVALID_CAMERA,
     ERR_INVALID_PERSON_NAME,
     ERR_INVALID_TRIGGER,
-    ERR_NO_AI_TASK_ENTITY,
     ERR_NO_TRIGGERS,
     ERR_UNIQUE_PERSON,
 )
-from .helpers import get_default_ai_task_entity_id, get_entity_area_id
+from .helpers import get_entity_area_id
 from .models import person_slug
 
 _PERSON_NAME_MAX_LEN = 100
@@ -99,11 +98,8 @@ def triggers_error(hass: HomeAssistant, triggers: list[str]) -> str | None:
     return None
 
 
-def ai_task_error(hass: HomeAssistant, override: str | None) -> str | None:
-    """Check the AI task override, or that a default AI task exists."""
-    if override:
-        if _domain_of(hass, override) != "ai_task":
-            return ERR_INVALID_AI_TASK_ENTITY
-    elif get_default_ai_task_entity_id(hass) is None:
-        return ERR_NO_AI_TASK_ENTITY
+def ai_task_error(hass: HomeAssistant, entity_id: str | None) -> str | None:
+    """Check the AI task entity used for identification."""
+    if not entity_id or _domain_of(hass, entity_id) != "ai_task":
+        return ERR_INVALID_AI_TASK_ENTITY
     return None

@@ -26,9 +26,9 @@
       },
       "ai_task": {
         "title": "AI task",
-        "description": "Optionally select the AI task entity used for identification. By default the HA default AI task entity is used.",
+        "description": "Select the AI task entity used to identify people on camera snapshots. It must support image attachments.",
         "data": {
-          "ai_task_entity": "AI task entity (optional)"
+          "ai_task_entity": "AI task entity"
         }
       },
       "reconfigure": {
@@ -70,11 +70,11 @@
       "no_cameras": "At least one camera must remain.",
       "no_triggers": "This camera needs at least one trigger binary sensor.",
       "invalid_trigger": "One or more triggers are not binary_sensor entities.",
-      "invalid_ai_task_entity": "The AI task entity must be an existing AI task entity.",
-      "no_ai_task_entity": "No AI task entity is available. Configure an AI provider and set a default AI task entity, or select one here."
+      "invalid_ai_task_entity": "The AI task entity must be an existing AI task entity."
     },
     "abort": {
       "single_instance_allowed": "Only a single configuration allowed.",
+      "no_ai_task_entity": "No AI task entity is available. Set up an AI provider integration that offers AI tasks (e.g. OpenAI, Google Gemini, Ollama) first.",
       "reconfigure_successful": "Re-configuration was successful."
     }
   },

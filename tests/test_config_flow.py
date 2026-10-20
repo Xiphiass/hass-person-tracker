@@ -57,10 +57,10 @@ async def _to_camera_form(hass: HomeAssistant, entry: MockConfigEntry) -> dict:
 # Initial setup: cameras -> AI task.
 
 
-async def test_flow_creates_entry_with_default_ai_task(
+async def test_flow_creates_entry(
     hass: HomeAssistant, default_ai_task: None, cameras: None
 ) -> None:
-    """The happy path creates an entry using the HA default AI task."""
+    """The happy path creates an entry; the AI task is prefilled, not implied."""
     result = await _init_user_flow(hass)
     assert result["type"] is FlowResultType.FORM
     assert result["step_id"] == "user"
@@ -69,23 +69,27 @@ async def test_flow_creates_entry_with_default_ai_task(
     assert result["step_id"] == "cameras_more"
     result = await _configure(hass, result, {const.CONF_ADD_CAMERA: False})
     assert result["step_id"] == "ai_task"
+    schema_key = next(iter(result["data_schema"].schema))
+    assert schema_key.description == {"suggested_value": "ai_task.openai"}
 
-    result = await _configure(hass, result, {})
+    result = await _configure(
+        hass, result, {const.CONF_AI_TASK_ENTITY: "ai_task.openai"}
+    )
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["title"] == "Person Tracker"
     assert result["data"] == {
         const.CONF_CAMERAS: [FRONT_DOOR],
-        const.CONF_AI_TASK_ENTITY: None,
+        const.CONF_AI_TASK_ENTITY: "ai_task.openai",
     }
     entry = hass.config_entries.async_entries(DOMAIN)[0]
     assert entry.data == result["data"]
     assert not entry.subentries
 
 
-async def test_flow_multiple_cameras_and_ai_task_override(
+async def test_flow_multiple_cameras(
     hass: HomeAssistant, default_ai_task: None, cameras: None
 ) -> None:
-    """Cameras can be added in a loop; an AI task override is stored."""
+    """Cameras can be added in a loop."""
     result = await _init_user_flow(hass)
     result = await _configure(hass, result, FRONT_DOOR)
     result = await _configure(hass, result, {const.CONF_ADD_CAMERA: True})
@@ -176,20 +180,16 @@ async def test_flow_rejects_invalid_camera(
 async def test_flow_no_ai_task_entity_available(
     hass: HomeAssistant, cameras: None
 ) -> None:
-    """No default AI task entity and no override fails the ai_task step."""
+    """Without any AI task entity the flow aborts before asking for cameras."""
     result = await _init_user_flow(hass)
-    result = await _configure(hass, result, FRONT_DOOR)
-    result = await _configure(hass, result, {const.CONF_ADD_CAMERA: False})
-    result = await _configure(hass, result, {})
-    assert result["step_id"] == "ai_task"
-    assert result["errors"] == {"base": const.ERR_NO_AI_TASK_ENTITY}
-    assert not hass.config_entries.async_entries(DOMAIN)
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == const.ABORT_NO_AI_TASK_ENTITY
 
 
 async def test_flow_invalid_ai_task_entity(
     hass: HomeAssistant, default_ai_task: None, cameras: None
 ) -> None:
-    """An AI task override that does not exist is rejected."""
+    """An AI task entity that does not exist is rejected."""
     result = await _init_user_flow(hass)
     result = await _configure(hass, result, FRONT_DOOR)
     result = await _configure(hass, result, {const.CONF_ADD_CAMERA: False})
@@ -291,7 +291,7 @@ async def test_reconfigure_remove_cameras(
 async def test_reconfigure_ai_task(
     hass: HomeAssistant, default_ai_task: None, cameras: None
 ) -> None:
-    """The AI task override can be set and cleared again."""
+    """The AI task entity can be changed; the form shows the current one."""
     hass.states.async_set("ai_task.other", "idle")
     async with setup_entry(hass) as entry:
         result = await _to_camera_form(hass, entry)
@@ -308,10 +308,6 @@ async def test_reconfigure_ai_task(
         result = await _configure(hass, result, {"next_step_id": "ai_task"})
         schema_key = next(iter(result["data_schema"].schema))
         assert schema_key.description == {"suggested_value": "ai_task.other"}
-        result = await _configure(hass, result, {})
-        await hass.async_block_till_done()
-        assert entry.data[const.CONF_AI_TASK_ENTITY] is None
-        assert entry.runtime_data.ai_task_entity_id == "ai_task.openai"
 
 
 async def test_reconfigure_entry_in_setup_error(

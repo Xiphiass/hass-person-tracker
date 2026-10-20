@@ -30,6 +30,7 @@ from homeassistant.helpers.selector import (
 )
 
 from .const import (
+    ABORT_NO_AI_TASK_ENTITY,
     ABORT_SINGLE_INSTANCE,
     CONF_ADD_CAMERA,
     CONF_AI_TASK_ENTITY,
@@ -46,6 +47,7 @@ from .const import (
     MAX_TTL_MINUTES,
     SUBENTRY_PERSON,
 )
+from .helpers import get_default_ai_task_entity_id
 from .models import person_slug
 from .validation import (
     ai_task_error,
@@ -87,7 +89,7 @@ _CAMERA_MORE_SCHEMA = probatio.Schema(
 )
 _AI_TASK_SCHEMA = probatio.Schema(
     {
-        probatio.Optional(CONF_AI_TASK_ENTITY): EntitySelector(
+        probatio.Required(CONF_AI_TASK_ENTITY): EntitySelector(
             EntitySelectorConfig(domain="ai_task")
         )
     }
@@ -147,6 +149,8 @@ class PersonTrackerConfigFlow(ConfigFlow, domain=DOMAIN):
         """User-initiated setup: first camera."""
         if self._async_current_entries():
             return self.async_abort(reason=ABORT_SINGLE_INSTANCE)
+        if not self.hass.states.async_entity_ids("ai_task"):
+            return self.async_abort(reason=ABORT_NO_AI_TASK_ENTITY)
         return await self._async_camera_step("user", user_input)
 
     async def async_step_cameras_more(
@@ -196,9 +200,9 @@ class PersonTrackerConfigFlow(ConfigFlow, domain=DOMAIN):
         """Select the AI task entity, then finish."""
         errors: dict[str, str] = {}
         if user_input is not None:
-            ai_task_entity = user_input.get(CONF_AI_TASK_ENTITY)
+            ai_task_entity = user_input[CONF_AI_TASK_ENTITY]
             if error := ai_task_error(self.hass, ai_task_entity):
-                errors[CONF_AI_TASK_ENTITY if ai_task_entity else "base"] = error
+                errors[CONF_AI_TASK_ENTITY] = error
             elif self._reconfiguring:
                 return self._save(**{CONF_AI_TASK_ENTITY: ai_task_entity})
             else:
@@ -211,6 +215,8 @@ class PersonTrackerConfigFlow(ConfigFlow, domain=DOMAIN):
                 )
         elif self._reconfiguring:
             user_input = dict(self._get_reconfigure_entry().data)
+        else:
+            user_input = {CONF_AI_TASK_ENTITY: get_default_ai_task_entity_id(self.hass)}
         return self.async_show_form(
             step_id="ai_task",
             data_schema=self.add_suggested_values_to_schema(

@@ -87,7 +87,7 @@ def add_camera(
 def entry_data(
     *,
     cameras: list[dict[str, Any]] | None = None,
-    ai_task_entity: str | None = None,
+    ai_task_entity: str | None = "ai_task.openai",
 ) -> dict[str, Any]:
     """Build person_tracker config entry data (the global settings)."""
     return {

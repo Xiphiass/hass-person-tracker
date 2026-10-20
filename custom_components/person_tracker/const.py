@@ -48,10 +48,10 @@ ERR_CAMERA_WITHOUT_AREA = "camera_without_area"
 ERR_NO_CAMERAS = "no_cameras"
 ERR_NO_TRIGGERS = "no_triggers"
 ERR_INVALID_TRIGGER = "invalid_trigger"
-ERR_NO_AI_TASK_ENTITY = "no_ai_task_entity"
 ERR_INVALID_AI_TASK_ENTITY = "invalid_ai_task_entity"
 
 ABORT_SINGLE_INSTANCE = "single_instance_allowed"
+ABORT_NO_AI_TASK_ENTITY = "no_ai_task_entity"
 
 # Extra state attributes exposed on the tracker entities (ADR 0003).
 ATTR_LAST_SEEN = "last_seen"

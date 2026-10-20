@@ -60,7 +60,7 @@ class Camera:
 class PersonTrackerData:
     """Runtime data of the config entry, shared with the entity platforms."""
 
-    ai_task_entity_id: str | None
+    ai_task_entity_id: str
     # Keyed by subentry ID.
     people: dict[str, Person]
     # Keyed by camera entity ID.

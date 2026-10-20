@@ -3,8 +3,8 @@ identification.
 
 Configuration is a UI config entry (ADR 0005):
 - the entry holds the global settings: the cameras to watch with their
-  trigger binary sensors, and an optional AI task entity (defaults to the HA
-  default AI task entity); editable via Reconfigure,
+  trigger binary sensors, and the AI task entity used for identification;
+  editable via Reconfigure,
 - each person to track (identity + optional TTL + optional authoritative
   tracker) is a config subentry of the entry.
 
@@ -37,7 +37,6 @@ from .const import (
 )
 from .helpers import (
     discover_reference_images,
-    get_default_ai_task_entity_id,
     get_person_images_dir,
     is_entity_pending,
 )
@@ -87,12 +86,11 @@ async def _async_build_entry_data(
 
     Raises ConfigEntryNotReady while a configured entity is registered but its
     integration has not loaded yet, so HA retries setup. Raises
-    ConfigEntryError when the entry cannot work at all (no usable AI task
-    entity). Cameras and triggers that are no longer valid are skipped with a
+    ConfigEntryError when the entry cannot work at all (AI task entity
+    missing). Cameras and triggers that are no longer valid are skipped with a
     visible error.
     """
-    override = entry.data.get(CONF_AI_TASK_ENTITY)
-    ai_task_entity_id = override or get_default_ai_task_entity_id(hass)
+    ai_task_entity_id = entry.data.get(CONF_AI_TASK_ENTITY)
     camera_configs = entry.data.get(CONF_CAMERAS, [])
     if pending := [
         entity_id
@@ -107,7 +105,7 @@ async def _async_build_entry_data(
             f"Waiting for {', '.join(pending)} to become available"
         )
 
-    if error := ai_task_error(hass, override):
+    if error := ai_task_error(hass, ai_task_entity_id):
         raise ConfigEntryError(error)
 
     people: dict[str, Person] = {}

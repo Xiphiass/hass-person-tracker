@@ -93,19 +93,19 @@ async def test_setup_creates_device_and_entity_per_person(
         ]
 
 
-async def test_setup_fails_when_no_ai_task_available(
-    hass: HomeAssistant,
+async def test_setup_fails_without_ai_task_entity(
+    hass: HomeAssistant, default_ai_task: None
 ) -> None:
-    """Without any AI task entity the entry fails to set up with a reason."""
+    """Missing AI task fails setup; the HA default AI task is not a fallback."""
     add_camera(hass, "camera.front_door", area_name="Garden")
     hass.states.async_set("binary_sensor.front_door_person", "off")
 
-    entry = create_entry(hass)
+    entry = create_entry(hass, entry_data(ai_task_entity=None))
     await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
 
     assert entry.state is ConfigEntryState.SETUP_ERROR
-    assert entry.reason == const.ERR_NO_AI_TASK_ENTITY
+    assert entry.reason == const.ERR_INVALID_AI_TASK_ENTITY
     assert not hass.states.async_entity_ids("device_tracker")
 
     await hass.config_entries.async_unload(entry.entry_id)
@@ -114,7 +114,7 @@ async def test_setup_fails_when_no_ai_task_available(
 async def test_setup_fails_on_invalid_ai_task_entity(
     hass: HomeAssistant,
 ) -> None:
-    """An AI task override pointing at a non-existent entity fails setup."""
+    """An AI task entity that no longer exists fails setup."""
     add_camera(hass, "camera.front_door", area_name="Garden")
     hass.states.async_set("binary_sensor.front_door_person", "off")
 
@@ -126,18 +126,6 @@ async def test_setup_fails_on_invalid_ai_task_entity(
     assert entry.reason == const.ERR_INVALID_AI_TASK_ENTITY
 
     await hass.config_entries.async_unload(entry.entry_id)
-
-
-async def test_setup_uses_default_ai_task(
-    hass: HomeAssistant, default_ai_task: None
-) -> None:
-    """No override in the entry data resolves to the HA default AI task."""
-    add_camera(hass, "camera.front_door", area_name="Garden")
-    hass.states.async_set("binary_sensor.front_door_person", "off")
-
-    async with setup_entry(hass, entry_data()) as entry:
-        data = entry.runtime_data
-        assert data.ai_task_entity_id == "ai_task.openai"
 
 
 async def test_setup_keeps_camera_without_area(
@@ -343,7 +331,7 @@ async def test_setup_retries_while_camera_not_loaded(
 
 
 async def test_setup_retries_while_ai_task_not_loaded(hass: HomeAssistant) -> None:
-    """A registered AI task override without a state yet makes setup retry."""
+    """A registered AI task entity without a state yet makes setup retry."""
     add_camera(hass, "camera.front_door", area_name="Garden")
     add_camera(hass, "ai_task.openai")
     hass.states.async_remove("ai_task.openai")
