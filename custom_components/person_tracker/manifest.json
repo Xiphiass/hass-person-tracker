@@ -1,0 +1,11 @@
+{
+  "domain": "person_tracker",
+  "name": "Person Tracker",
+  "codeowners": ["@Xiphiass"],
+  "config_flow": true,
+  "documentation": "https://github.com/Xiphiass/hass-person-tracker",
+  "iot_class": "calculated",
+  "requirements": [],
+  "version": "0.1.0",
+  "dependencies": ["ai_task"]
+}

@@ -1,0 +1,118 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Person Tracker",
+        "description": "Füge die Kameras hinzu, die überwacht werden sollen. Eine Kamera muss einem HA-Bereich zugewiesen sein und braucht mindestens einen auslösenden Binärsensor. Personen werden anschließend auf der Integrationsseite hinzugefügt.",
+        "data": {
+          "camera": "Kamera",
+          "triggers": "Auslösende(r) Binärsensor(en)"
+        }
+      },
+      "cameras_more": {
+        "title": "Person Tracker",
+        "description": "Weitere Kamera hinzufügen?",
+        "data": {
+          "add_camera": "Weitere Kamera hinzufügen"
+        }
+      },
+      "camera_add": {
+        "title": "Kamera hinzufügen",
+        "description": "Füge eine Kamera hinzu, die überwacht werden soll. Sie muss einem HA-Bereich zugewiesen sein und braucht mindestens einen auslösenden Binärsensor.",
+        "data": {
+          "camera": "Kamera",
+          "triggers": "Auslösende(r) Binärsensor(en)"
+        }
+      },
+      "ai_task": {
+        "title": "KI-Aufgabe",
+        "description": "Wähle die KI-Aufgaben-Entität, mit der Personen auf Kamera-Schnappschüssen erkannt werden. Sie muss Bildanhänge unterstützen.",
+        "data": {
+          "ai_task_entity": "KI-Aufgaben-Entität"
+        }
+      },
+      "reconfigure": {
+        "title": "Person Tracker neu konfigurieren",
+        "description": "Was möchtest du ändern?",
+        "menu_options": {
+          "camera_add": "Kamera hinzufügen",
+          "camera_edit": "Auslöser einer Kamera ändern",
+          "camera_remove": "Kameras entfernen",
+          "ai_task": "KI-Aufgaben-Entität ändern"
+        }
+      },
+      "camera_edit": {
+        "title": "Auslöser ändern",
+        "description": "Wähle die Kamera, deren Auslöser du ändern möchtest.",
+        "data": {
+          "camera": "Kamera"
+        }
+      },
+      "camera_triggers": {
+        "title": "Auslöser ändern",
+        "description": "Auslöser für {camera}.",
+        "data": {
+          "triggers": "Auslösende(r) Binärsensor(en)"
+        }
+      },
+      "camera_remove": {
+        "title": "Kameras entfernen",
+        "description": "Wähle die Kameras, die entfernt werden sollen. Mindestens eine Kamera muss bestehen bleiben.",
+        "data": {
+          "remove_cameras": "Zu entfernende Kameras"
+        }
+      }
+    },
+    "error": {
+      "invalid_camera": "Die Kamera muss eine vorhandene Kamera-Entität sein.",
+      "duplicate_camera": "Diese Kamera ist bereits hinzugefügt.",
+      "camera_without_area": "Diese Kamera ist keinem HA-Bereich zugewiesen. Weise zuerst einen Bereich zu (Einstellungen → Bereiche).",
+      "no_cameras": "Mindestens eine Kamera muss bestehen bleiben.",
+      "no_triggers": "Diese Kamera braucht mindestens einen auslösenden Binärsensor.",
+      "invalid_trigger": "Ein oder mehrere Auslöser sind keine binary_sensor-Entitäten.",
+      "invalid_ai_task_entity": "Die KI-Aufgaben-Entität muss eine vorhandene KI-Aufgaben-Entität sein."
+    },
+    "abort": {
+      "single_instance_allowed": "Nur eine einzige Konfiguration ist zulässig.",
+      "no_ai_task_entity": "Es ist keine KI-Aufgaben-Entität verfügbar. Richte zuerst eine KI-Anbieter-Integration ein, die KI-Aufgaben unterstützt (z. B. OpenAI, Google Gemini, Ollama).",
+      "reconfigure_successful": "Die Neukonfiguration war erfolgreich."
+    }
+  },
+  "config_subentries": {
+    "person": {
+      "initiate_flow": {
+        "user": "Person hinzufügen",
+        "reconfigure": "Person bearbeiten"
+      },
+      "entry_type": "Person",
+      "step": {
+        "user": {
+          "title": "Person hinzufügen",
+          "description": "Referenzbilder gehören in <config>/person_tracker/people/<name>/.",
+          "data": {
+            "name": "Name der Person",
+            "ttl": "TTL (Minuten)",
+            "authoritative_tracker": "Maßgeblicher Tracker (optional)"
+          }
+        },
+        "reconfigure": {
+          "title": "Person bearbeiten",
+          "description": "Wenn du eine Person umbenennst, ändert sich auch ihr Referenzbild-Ordner <config>/person_tracker/people/<name>/; verschiebe die Bilder entsprechend.",
+          "data": {
+            "name": "Name der Person",
+            "ttl": "TTL (Minuten)",
+            "authoritative_tracker": "Maßgeblicher Tracker (optional)"
+          }
+        }
+      },
+      "error": {
+        "invalid_person_name": "Ungültiger Name. Namen dürfen nicht leer sein, keine Leerzeichen oder Pfadzeichen enthalten und werden als Ordnernamen verwendet.",
+        "unique_person": "Diese Person ist bereits konfiguriert.",
+        "invalid_authoritative_tracker": "Der maßgebliche Tracker muss eine vorhandene device_tracker-Entität sein."
+      },
+      "abort": {
+        "reconfigure_successful": "Die Neukonfiguration war erfolgreich."
+      }
+    }
+  }
+}

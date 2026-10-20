@@ -13,3 +13,8 @@ Default vocabulary: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-
 ### Domain docs
 
 Single-context: `GLOSSARY.md` at repo root, ADRs under `docs/adr/`. See `docs/agents/domain.md`.
+
+## Workflow
+
+- Build every issue on a feature branch (never commit work directly to `main`).
+- After the work passes local tests and formatting (black), open a PR against `main` from the feature branch.

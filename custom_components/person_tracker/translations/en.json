@@ -1,0 +1,118 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Person Tracker",
+        "description": "Add the cameras to watch. A camera must be assigned to an HA area and needs at least one trigger binary sensor. People are added afterwards from the integration page.",
+        "data": {
+          "camera": "Camera",
+          "triggers": "Trigger binary sensor(s)"
+        }
+      },
+      "cameras_more": {
+        "title": "Person Tracker",
+        "description": "Add another camera?",
+        "data": {
+          "add_camera": "Add another camera"
+        }
+      },
+      "camera_add": {
+        "title": "Add camera",
+        "description": "Add a camera to watch. It must be assigned to an HA area and needs at least one trigger binary sensor.",
+        "data": {
+          "camera": "Camera",
+          "triggers": "Trigger binary sensor(s)"
+        }
+      },
+      "ai_task": {
+        "title": "AI task",
+        "description": "Select the AI task entity used to identify people on camera snapshots. It must support image attachments.",
+        "data": {
+          "ai_task_entity": "AI task entity"
+        }
+      },
+      "reconfigure": {
+        "title": "Reconfigure Person Tracker",
+        "description": "What do you want to change?",
+        "menu_options": {
+          "camera_add": "Add a camera",
+          "camera_edit": "Change a camera's triggers",
+          "camera_remove": "Remove cameras",
+          "ai_task": "Change the AI task entity"
+        }
+      },
+      "camera_edit": {
+        "title": "Change triggers",
+        "description": "Select the camera whose triggers you want to change.",
+        "data": {
+          "camera": "Camera"
+        }
+      },
+      "camera_triggers": {
+        "title": "Change triggers",
+        "description": "Triggers for {camera}.",
+        "data": {
+          "triggers": "Trigger binary sensor(s)"
+        }
+      },
+      "camera_remove": {
+        "title": "Remove cameras",
+        "description": "Select the cameras to remove. At least one camera must remain.",
+        "data": {
+          "remove_cameras": "Cameras to remove"
+        }
+      }
+    },
+    "error": {
+      "invalid_camera": "The camera must be an existing camera entity.",
+      "duplicate_camera": "This camera is already in the map.",
+      "camera_without_area": "This camera is not assigned to an HA area. Assign an area (Settings → Areas) first.",
+      "no_cameras": "At least one camera must remain.",
+      "no_triggers": "This camera needs at least one trigger binary sensor.",
+      "invalid_trigger": "One or more triggers are not binary_sensor entities.",
+      "invalid_ai_task_entity": "The AI task entity must be an existing AI task entity."
+    },
+    "abort": {
+      "single_instance_allowed": "Only a single configuration allowed.",
+      "no_ai_task_entity": "No AI task entity is available. Set up an AI provider integration that offers AI tasks (e.g. OpenAI, Google Gemini, Ollama) first.",
+      "reconfigure_successful": "Re-configuration was successful."
+    }
+  },
+  "config_subentries": {
+    "person": {
+      "initiate_flow": {
+        "user": "Add person",
+        "reconfigure": "Edit person"
+      },
+      "entry_type": "Person",
+      "step": {
+        "user": {
+          "title": "Add person",
+          "description": "Reference images go in <config>/person_tracker/people/<name>/.",
+          "data": {
+            "name": "Person name",
+            "ttl": "TTL (minutes)",
+            "authoritative_tracker": "Authoritative tracker (optional)"
+          }
+        },
+        "reconfigure": {
+          "title": "Edit person",
+          "description": "Renaming a person also renames their reference image folder <config>/person_tracker/people/<name>/; move the images accordingly.",
+          "data": {
+            "name": "Person name",
+            "ttl": "TTL (minutes)",
+            "authoritative_tracker": "Authoritative tracker (optional)"
+          }
+        }
+      },
+      "error": {
+        "invalid_person_name": "Invalid person name. Names must not be empty, may not contain whitespace or path characters, and are used as folder names.",
+        "unique_person": "This person is already configured.",
+        "invalid_authoritative_tracker": "The authoritative tracker must be an existing device_tracker entity."
+      },
+      "abort": {
+        "reconfigure_successful": "Re-configuration was successful."
+      }
+    }
+  }
+}

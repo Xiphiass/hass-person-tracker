@@ -6,7 +6,7 @@ LLM-based identification, as a Home Assistant custom integration.
 ## Language
 
 **Person**:
-A known household member who has one or more reference images. The thing we track.
+A known household member who has one or more reference images. The thing we track. Configured as a subentry of the integration entry.
 _Avoid_: user, member, face
 
 **Location**:
