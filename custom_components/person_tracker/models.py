@@ -5,10 +5,14 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from homeassistant.config_entries import ConfigEntry
 
-from .const import DEFAULT_TTL_MINUTES
+from .const import DEFAULT_COOLDOWN_SECONDS, DEFAULT_TTL_MINUTES
+
+if TYPE_CHECKING:
+    from .detection import DetectionCoordinator
 
 type PersonTrackerConfigEntry = ConfigEntry[PersonTrackerData]
 
@@ -65,6 +69,10 @@ class PersonTrackerData:
     people: dict[str, Person]
     # Keyed by camera entity ID.
     cameras: dict[str, Camera]
+    # Seconds to wait between detection runs of the same camera (Issue #3).
+    cooldown_seconds: int = DEFAULT_COOLDOWN_SECONDS
+    # The detection loop; set during entry setup.
+    coordinator: DetectionCoordinator | None = None
 
     @property
     def person_names(self) -> set[str]:

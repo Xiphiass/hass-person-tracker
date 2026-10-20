@@ -75,11 +75,18 @@ async def test_flow_creates_entry(
     result = await _configure(
         hass, result, {const.CONF_AI_TASK_ENTITY: "ai_task.openai"}
     )
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "cooldown"
+    cooldown_key = next(iter(result["data_schema"].schema))
+    assert cooldown_key.description == {"suggested_value": 30}
+
+    result = await _configure(hass, result, {const.CONF_COOLDOWN: 45})
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["title"] == "Person Tracker"
     assert result["data"] == {
         const.CONF_CAMERAS: [FRONT_DOOR],
         const.CONF_AI_TASK_ENTITY: "ai_task.openai",
+        const.CONF_COOLDOWN: 45,
     }
     entry = hass.config_entries.async_entries(DOMAIN)[0]
     assert entry.data == result["data"]
@@ -100,10 +107,12 @@ async def test_flow_multiple_cameras(
     result = await _configure(
         hass, result, {const.CONF_AI_TASK_ENTITY: "ai_task.openai"}
     )
+    result = await _configure(hass, result, {const.CONF_COOLDOWN: 30})
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["data"] == {
         const.CONF_CAMERAS: [FRONT_DOOR, BACK_DOOR],
         const.CONF_AI_TASK_ENTITY: "ai_task.openai",
+        const.CONF_COOLDOWN: 30,
     }
 
 
@@ -308,6 +317,31 @@ async def test_reconfigure_ai_task(
         result = await _configure(hass, result, {"next_step_id": "ai_task"})
         schema_key = next(iter(result["data_schema"].schema))
         assert schema_key.description == {"suggested_value": "ai_task.other"}
+
+
+async def test_reconfigure_cooldown(
+    hass: HomeAssistant, default_ai_task: None, cameras: None
+) -> None:
+    """The detection cooldown is a global setting, editable via Reconfigure."""
+    async with setup_entry(hass) as entry:
+        result = await _to_camera_form(hass, entry)
+        result = await _configure(hass, result, {"next_step_id": "cooldown"})
+        assert result["step_id"] == "cooldown"
+        # No cooldown stored yet: the default is suggested.
+        cooldown_key = next(iter(result["data_schema"].schema))
+        assert cooldown_key.description == {"suggested_value": 30}
+
+        result = await _configure(hass, result, {const.CONF_COOLDOWN: 120})
+        assert result["reason"] == "reconfigure_successful"
+        await hass.async_block_till_done()
+        assert entry.data[const.CONF_COOLDOWN] == 120
+        assert entry.runtime_data.cooldown_seconds == 120
+
+        # The stored value is now suggested.
+        result = await _to_camera_form(hass, entry)
+        result = await _configure(hass, result, {"next_step_id": "cooldown"})
+        cooldown_key = next(iter(result["data_schema"].schema))
+        assert cooldown_key.description == {"suggested_value": 120}
 
 
 async def test_reconfigure_entry_in_setup_error(

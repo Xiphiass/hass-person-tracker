@@ -10,12 +10,14 @@ establishes the identity and initial state.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any, override
 
 from homeassistant.components.device_tracker import TrackerEntity
 from homeassistant.const import STATE_UNKNOWN
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
+from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .const import (
@@ -24,6 +26,7 @@ from .const import (
     ATTR_LAST_LOCATION,
     ATTR_LAST_SEEN,
     DOMAIN,
+    SIGNAL_TRACKER_UPDATE_PERSON,
 )
 from .models import Person, PersonTrackerConfigEntry
 
@@ -62,6 +65,26 @@ class PersonTrackerEntity(TrackerEntity):
             name=person.name,
             entry_type=DeviceEntryType.SERVICE,
         )
+        self._unsub_update: Callable[[], None] | None = None
+
+    async def async_added_to_hass(self) -> None:
+        """Re-publish state when a detection run updates this person."""
+        self._unsub_update = async_dispatcher_connect(
+            self.hass,
+            f"{SIGNAL_TRACKER_UPDATE_PERSON}{self._person.subentry_id}",
+            self._async_handle_update,
+        )
+
+    async def async_will_remove_from_hass(self) -> None:
+        """Stop listening for detection updates."""
+        if self._unsub_update is not None:
+            self._unsub_update()
+            self._unsub_update = None
+
+    @callback
+    def _async_handle_update(self) -> None:
+        """A detection run updated this person; re-publish the state."""
+        self.async_write_ha_state()
 
     @property
     def state(self) -> str:

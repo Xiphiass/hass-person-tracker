@@ -88,9 +88,10 @@ def entry_data(
     *,
     cameras: list[dict[str, Any]] | None = None,
     ai_task_entity: str | None = "ai_task.openai",
+    cooldown_seconds: int | None = None,
 ) -> dict[str, Any]:
     """Build person_tracker config entry data (the global settings)."""
-    return {
+    data: dict[str, Any] = {
         const.CONF_CAMERAS: cameras
         or [
             {
@@ -100,6 +101,9 @@ def entry_data(
         ],
         const.CONF_AI_TASK_ENTITY: ai_task_entity,
     }
+    if cooldown_seconds is not None:
+        data[const.CONF_COOLDOWN] = cooldown_seconds
+    return data
 
 
 def person(

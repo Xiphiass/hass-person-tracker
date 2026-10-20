@@ -31,6 +31,13 @@
           "ai_task_entity": "AI task entity"
         }
       },
+      "cooldown": {
+        "title": "Detection cooldown",
+        "description": "How long to wait between detection runs on the same camera, in seconds.",
+        "data": {
+          "cooldown": "Cooldown (seconds)"
+        }
+      },
       "reconfigure": {
         "title": "Reconfigure Person Tracker",
         "description": "What do you want to change?",
@@ -38,7 +45,8 @@
           "camera_add": "Add a camera",
           "camera_edit": "Change a camera's triggers",
           "camera_remove": "Remove cameras",
-          "ai_task": "Change the AI task entity"
+          "ai_task": "Change the AI task entity",
+          "cooldown": "Change the detection cooldown"
         }
       },
       "camera_edit": {

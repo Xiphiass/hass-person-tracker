@@ -31,6 +31,13 @@
           "ai_task_entity": "KI-Aufgaben-Entität"
         }
       },
+      "cooldown": {
+        "title": "Erkennungspausenzeit",
+        "description": "Wie lange in Sekunden gewartet werden soll, bis dieselbe Kamera erneut durchsucht wird.",
+        "data": {
+          "cooldown": "Pausenzeit (Sekunden)"
+        }
+      },
       "reconfigure": {
         "title": "Person Tracker neu konfigurieren",
         "description": "Was möchtest du ändern?",
@@ -38,7 +45,8 @@
           "camera_add": "Kamera hinzufügen",
           "camera_edit": "Auslöser einer Kamera ändern",
           "camera_remove": "Kameras entfernen",
-          "ai_task": "KI-Aufgaben-Entität ändern"
+          "ai_task": "KI-Aufgaben-Entität ändern",
+          "cooldown": "Erkennungspausenzeit ändern"
         }
       },
       "camera_edit": {
