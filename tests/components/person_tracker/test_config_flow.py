@@ -210,14 +210,18 @@ async def test_flow_invalid_person_name(
     )
     assert result["type"] is FlowResultType.FORM
     assert result["step_id"] == "user"
-    assert const.ERR_INVALID_PERSON_NAME in result["errors"]
+    assert result["errors"] == {const.CONF_PERSON_NAME: const.ERR_INVALID_PERSON_NAME}
     assert not hass.config_entries.async_entries(DOMAIN)
 
 
+@pytest.mark.parametrize("second_name", ["Alice", "alice", "ALICE"])
 async def test_flow_duplicate_person_name(
-    hass: HomeAssistant, enable_custom_integrations: None, default_ai_task: None
+    hass: HomeAssistant,
+    enable_custom_integrations: None,
+    default_ai_task: None,
+    second_name: str,
 ) -> None:
-    """Adding the same person twice is rejected."""
+    """Adding the same person twice is rejected, regardless of case."""
     result = await _init_user_flow(hass)
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {const.CONF_PERSON_NAME: "Alice"}
@@ -228,11 +232,11 @@ async def test_flow_duplicate_person_name(
     )
     assert result["step_id"] == "person_add"
     result = await hass.config_entries.flow.async_configure(
-        result["flow_id"], {const.CONF_PERSON_NAME: "Alice"}
+        result["flow_id"], {const.CONF_PERSON_NAME: second_name}
     )
     assert result["type"] is FlowResultType.FORM
     assert result["step_id"] == "person_add"
-    assert const.ERR_UNIQUE_PERSON in result["errors"]
+    assert result["errors"] == {const.CONF_PERSON_NAME: const.ERR_UNIQUE_PERSON}
 
 
 async def test_flow_invalid_authoritative_tracker(
@@ -260,7 +264,9 @@ async def test_flow_invalid_authoritative_tracker(
         },
     )
     assert result["type"] is FlowResultType.FORM
-    assert const.ERR_INVALID_AUTHORITATIVE_TRACKER in result["errors"]
+    assert result["errors"] == {
+        const.CONF_AUTHORITATIVE_TRACKER: const.ERR_INVALID_AUTHORITATIVE_TRACKER
+    }
 
 
 async def test_flow_camera_without_area(
@@ -286,7 +292,7 @@ async def test_flow_camera_without_area(
     )
     assert result["type"] is FlowResultType.FORM
     assert result["step_id"] == "camera_first"
-    assert const.ERR_CAMERA_WITHOUT_AREA in result["errors"]
+    assert result["errors"] == {const.CONF_CAMERA: const.ERR_CAMERA_WITHOUT_AREA}
 
 
 async def test_flow_camera_must_be_camera_entity(
@@ -346,7 +352,7 @@ async def test_flow_duplicate_camera(
         },
     )
     assert result["type"] is FlowResultType.FORM
-    assert const.ERR_DUPLICATE_CAMERA in result["errors"]
+    assert result["errors"] == {const.CONF_CAMERA: const.ERR_DUPLICATE_CAMERA}
 
 
 async def test_flow_trigger_must_be_binary_sensor(
@@ -373,6 +379,48 @@ async def test_flow_trigger_must_be_binary_sensor(
         )
 
 
+@pytest.mark.parametrize(
+    ("camera", "triggers", "errors"),
+    [
+        (
+            "camera.ghost",
+            ["binary_sensor.front_door_person"],
+            {const.CONF_CAMERA: const.ERR_INVALID_CAMERA},
+        ),
+        (
+            "camera.front_door",
+            ["binary_sensor.ghost"],
+            {const.CONF_TRIGGERS: const.ERR_INVALID_TRIGGER},
+        ),
+    ],
+)
+async def test_flow_rejects_entities_without_state(
+    hass: HomeAssistant,
+    enable_custom_integrations: None,
+    default_ai_task: None,
+    camera: str,
+    triggers: list[str],
+    errors: dict[str, str],
+) -> None:
+    """Cameras and triggers that do not exist are rejected, not stored."""
+    add_camera(hass, "camera.front_door", area_name="Garden")
+    hass.states.async_set("binary_sensor.front_door_person", "off")
+
+    result = await _init_user_flow(hass)
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {const.CONF_PERSON_NAME: "Alice"}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {const.CONF_ADD_PERSON: False}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {const.CONF_CAMERA: camera, const.CONF_TRIGGERS: triggers}
+    )
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "camera_first"
+    assert result["errors"] == errors
+
+
 async def test_flow_camera_needs_at_least_one_trigger(
     hass: HomeAssistant, enable_custom_integrations: None, default_ai_task: None
 ) -> None:
@@ -391,7 +439,7 @@ async def test_flow_camera_needs_at_least_one_trigger(
         {const.CONF_CAMERA: "camera.front_door", const.CONF_TRIGGERS: []},
     )
     assert result["type"] is FlowResultType.FORM
-    assert const.ERR_NO_TRIGGERS in result["errors"]
+    assert result["errors"] == {const.CONF_TRIGGERS: const.ERR_NO_TRIGGERS}
 
 
 async def test_flow_no_ai_task_entity_available(
@@ -421,7 +469,7 @@ async def test_flow_no_ai_task_entity_available(
     result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
     assert result["type"] is FlowResultType.FORM
     assert result["step_id"] == "ai_task"
-    assert const.ERR_NO_AI_TASK_ENTITY in result["errors"]
+    assert result["errors"] == {"base": const.ERR_NO_AI_TASK_ENTITY}
     assert not hass.config_entries.async_entries(DOMAIN)
 
 
@@ -453,7 +501,9 @@ async def test_flow_invalid_ai_task_entity(
         result["flow_id"], {const.CONF_AI_TASK_ENTITY: "ai_task.gone"}
     )
     assert result["type"] is FlowResultType.FORM
-    assert const.ERR_INVALID_AI_TASK_ENTITY in result["errors"]
+    assert result["errors"] == {
+        const.CONF_AI_TASK_ENTITY: const.ERR_INVALID_AI_TASK_ENTITY
+    }
 
 
 async def test_flow_single_instance_only(

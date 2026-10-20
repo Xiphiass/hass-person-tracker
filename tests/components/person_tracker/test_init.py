@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 
 from homeassistant.config_entries import ConfigEntryState
-from homeassistant.const import STATE_UNAVAILABLE
+from homeassistant.const import ATTR_RESTORED, STATE_UNAVAILABLE
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
@@ -318,3 +318,69 @@ async def test_ttl_field_is_parsed(hass: HomeAssistant, default_ai_task: None) -
         data = hass.data[DOMAIN][entry.entry_id]
         assert data.people["Alice"].ttl == timedelta(minutes=30)
         assert data.people["Alice"].authoritative_tracker is None
+
+
+@pytest.mark.parametrize("restored", [False, True])
+async def test_setup_retries_while_camera_not_loaded(
+    hass: HomeAssistant, default_ai_task: None, restored: bool
+) -> None:
+    """A registered camera without a live state yet makes setup retry."""
+    add_camera(hass, "camera.front_door", area_name="Garden")
+    hass.states.async_set("binary_sensor.front_door_person", "off")
+    if restored:
+        hass.states.async_set(
+            "camera.front_door", STATE_UNAVAILABLE, {ATTR_RESTORED: True}
+        )
+    else:
+        hass.states.async_remove("camera.front_door")
+
+    entry = MockConfigEntry(domain=DOMAIN, data=entry_data())
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert entry.state is ConfigEntryState.SETUP_RETRY
+    assert "camera.front_door" in entry.reason
+
+    await hass.config_entries.async_unload(entry.entry_id)
+
+
+async def test_setup_retries_while_ai_task_not_loaded(hass: HomeAssistant) -> None:
+    """A registered AI task override without a state yet makes setup retry."""
+    add_camera(hass, "camera.front_door", area_name="Garden")
+    add_camera(hass, "ai_task.openai")
+    hass.states.async_remove("ai_task.openai")
+    hass.states.async_set("binary_sensor.front_door_person", "off")
+
+    entry = MockConfigEntry(
+        domain=DOMAIN, data=entry_data(ai_task_entity="ai_task.openai")
+    )
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert entry.state is ConfigEntryState.SETUP_RETRY
+
+    await hass.config_entries.async_unload(entry.entry_id)
+
+
+async def test_setup_skips_person_with_colliding_slug(
+    hass: HomeAssistant, default_ai_task: None, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Names that differ only in case share a slug; the later one is skipped."""
+    add_camera(hass, "camera.front_door", area_name="Garden")
+    hass.states.async_set("binary_sensor.front_door_person", "off")
+
+    caplog.set_level(logging.ERROR, logger=LOGGER_NAME)
+    async with setup_entry(
+        hass,
+        entry_data(
+            people=[
+                {const.CONF_PERSON_NAME: "Alice", const.CONF_TTL: 30},
+                {const.CONF_PERSON_NAME: "alice", const.CONF_TTL: 30},
+            ]
+        ),
+    ) as entry:
+        assert entry.state is ConfigEntryState.LOADED
+        assert hass.data[DOMAIN][entry.entry_id].person_names == {"Alice"}
+        assert any("'alice'" in record.message for record in caplog.records)

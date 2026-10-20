@@ -8,7 +8,7 @@ from pathlib import Path
 
 from homeassistant.components import ai_task as ai_task_component
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import STATE_UNAVAILABLE
+from homeassistant.const import ATTR_RESTORED, STATE_UNAVAILABLE
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import area_registry as ar
 from homeassistant.helpers import device_registry as dr
@@ -66,6 +66,20 @@ def get_entity_domain(hass: HomeAssistant, entity_id: str) -> str | None:
     return state.domain if state is not None else None
 
 
+def is_entity_pending(hass: HomeAssistant, entity_id: str) -> bool:
+    """Return True if *entity_id* is registered but has no live state yet.
+
+    At HA startup an entity's integration may load after ours; until then the
+    entity has no state, or only the placeholder HA restores for registered
+    entities.
+    """
+    entry = er.async_get(hass).async_get(entity_id)
+    if entry is None or entry.disabled:
+        return False
+    state = hass.states.get(entity_id)
+    return state is None or bool(state.attributes.get(ATTR_RESTORED))
+
+
 def get_default_ai_task_entity_id(hass: HomeAssistant) -> str | None:
     """Return the default AI task entity, or None."""
     if preferences := hass.data.get(ai_task_component.const.DATA_PREFERENCES):
@@ -94,7 +108,10 @@ def get_person_images_dir(hass: HomeAssistant, person_name: str) -> Path:
 
 
 def discover_reference_images(hass: HomeAssistant, person_name: str) -> list[Path]:
-    """Return image files placed for *person_name*, sorted."""
+    """Return image files placed for *person_name*, sorted.
+
+    Does blocking I/O; run it in the executor.
+    """
     folder = get_person_images_dir(hass, person_name)
     if not folder.is_dir():
         return []

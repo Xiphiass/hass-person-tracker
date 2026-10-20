@@ -9,6 +9,11 @@ from pathlib import Path
 from .const import DEFAULT_TTL_MINUTES
 
 
+def person_slug(name: str) -> str:
+    """Return the filesystem- and slug-safe key for person *name*."""
+    return "".join(c if c.isalnum() else "-" for c in name.lower())
+
+
 @dataclass
 class Person:
     """One known person and their runtime location state.
@@ -36,7 +41,7 @@ class Person:
     @property
     def slug(self) -> str:
         """Filesystem- and slug-safe key for this person."""
-        return "".join(c if c.isalnum() else "-" for c in self.name.lower())
+        return person_slug(self.name)
 
 
 @dataclass

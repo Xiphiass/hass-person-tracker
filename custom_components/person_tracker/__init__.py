@@ -20,7 +20,7 @@ from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import ConfigEntryError
+from homeassistant.exceptions import ConfigEntryError, ConfigEntryNotReady
 from homeassistant.helpers import config_validation as cv
 
 from .const import (
@@ -43,9 +43,10 @@ from .helpers import (
     get_default_ai_task_entity_id,
     get_entity_area_id,
     get_entity_domain,
+    is_entity_pending,
     valid_triggers,
 )
-from .models import Camera, Person, PersonTrackerData
+from .models import Camera, Person, PersonTrackerData, person_slug
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -78,25 +79,53 @@ async def _async_build_entry_data(
 ) -> PersonTrackerData:
     """Validate the entry against live HA state and build the runtime data.
 
-    Raises ConfigEntryError when the entry cannot work at all (missing AI task
+    Raises ConfigEntryNotReady while a configured entity is registered but its
+    integration has not loaded yet, so HA retries setup. Raises
+    ConfigEntryError when the entry cannot work at all (missing AI task
     entity). Cameras without an HA area are skipped with a visible error.
     """
     override = entry.data.get(CONF_AI_TASK_ENTITY)
-    if override:
-        if get_entity_domain(hass, override) != "ai_task":
-            raise ConfigEntryError(ERR_INVALID_AI_TASK_ENTITY)
-        ai_task_entity_id = override
-    elif (ai_task_entity_id := get_default_ai_task_entity_id(hass)) is None:
+    ai_task_entity_id = override or get_default_ai_task_entity_id(hass)
+    if ai_task_entity_id is None:
         raise ConfigEntryError(ERR_NO_AI_TASK_ENTITY)
 
+    camera_configs = entry.data.get(CONF_CAMERAS, [])
+    if pending := [
+        entity_id
+        for entity_id in (
+            ai_task_entity_id,
+            *(c[CONF_CAMERA] for c in camera_configs),
+            *(t for c in camera_configs for t in c.get(CONF_TRIGGERS, [])),
+        )
+        if is_entity_pending(hass, entity_id)
+    ]:
+        raise ConfigEntryNotReady(
+            f"Waiting for {', '.join(pending)} to become available"
+        )
+
+    if override and get_entity_domain(hass, override) != "ai_task":
+        raise ConfigEntryError(ERR_INVALID_AI_TASK_ENTITY)
+
     people: dict[str, Person] = {}
+    slugs: set[str] = set()
     for person_data in entry.data.get(CONF_PEOPLE, []):
+        name = person_data[CONF_PERSON_NAME]
+        if (slug := person_slug(name)) in slugs:
+            _LOGGER.error(
+                "Person %r collides with another person's name (names may not "
+                "differ only in case or punctuation); skipping it.",
+                name,
+            )
+            continue
+        slugs.add(slug)
         person = Person(
-            name=person_data[CONF_PERSON_NAME],
+            name=name,
             ttl_minutes=person_data.get(CONF_TTL, DEFAULT_TTL_MINUTES),
             authoritative_tracker=person_data.get(CONF_AUTHORITATIVE_TRACKER),
         )
-        person.reference_images = discover_reference_images(hass, person.name)
+        person.reference_images = await hass.async_add_executor_job(
+            discover_reference_images, hass, person.name
+        )
         if not person.reference_images:
             _LOGGER.warning(
                 "Person %r has no reference images yet; place some under "
@@ -107,7 +136,7 @@ async def _async_build_entry_data(
         people[person.name] = person
 
     cameras: dict[str, Camera] = {}
-    for camera_data in entry.data.get(CONF_CAMERAS, []):
+    for camera_data in camera_configs:
         camera_entity_id = camera_data[CONF_CAMERA]
         area_id = get_entity_area_id(hass, camera_entity_id)
         if area_id is None:
