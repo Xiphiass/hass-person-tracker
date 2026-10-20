@@ -28,16 +28,19 @@ from .const import (
     CONF_AUTHORITATIVE_TRACKER,
     CONF_CAMERA,
     CONF_CAMERAS,
+    CONF_COOLDOWN,
     CONF_PEOPLE,
     CONF_PERSON_NAME,
     CONF_TTL,
     CONF_TRIGGERS,
+    DEFAULT_COOLDOWN_SECONDS,
     DEFAULT_TTL_MINUTES,
     DOMAIN,
     ERR_INVALID_AI_TASK_ENTITY,
     ERR_NO_AI_TASK_ENTITY,
     PLATFORMS,
 )
+from .detection import DetectionCoordinator
 from .helpers import (
     discover_reference_images,
     get_default_ai_task_entity_id,
@@ -60,6 +63,13 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     _LOGGER.info("Person tracker setup entry: %s", entry.entry_id)
     data = await _async_build_entry_data(hass, entry)
+
+    coordinator = DetectionCoordinator(
+        hass, data, cooldown=entry.data.get(CONF_COOLDOWN, DEFAULT_COOLDOWN_SECONDS)
+    )
+    await coordinator.async_start()
+    data.coordinator = coordinator
+
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = data
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
@@ -69,7 +79,9 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:
-        hass.data[DOMAIN].pop(entry.entry_id, None)
+        data = hass.data[DOMAIN].pop(entry.entry_id, None)
+        if data and data.coordinator:
+            await data.coordinator.async_stop()
     return unload_ok
 
 

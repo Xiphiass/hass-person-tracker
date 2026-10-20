@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 from .const import DEFAULT_TTL_MINUTES
 
@@ -29,6 +30,11 @@ class Person:
     last_camera: str | None = None
 
     @property
+    def ttl(self) -> timedelta:
+        """Return TTL as timedelta."""
+        return timedelta(minutes=self.ttl_minutes)
+
+    @property
     def slug(self) -> str:
         """Filesystem- and slug-safe key for this person."""
         return "".join(c if c.isalnum() else "-" for c in self.name.lower())
@@ -45,12 +51,13 @@ class Camera:
 
 @dataclass
 class PersonTrackerData:
-    """Per-config-entry runtime data shared with the entity platforms."""
+    """Per-config-entry runtime data shared by entity platforms."""
 
     entry_id: str
-    ai_task_entity_id: str | None
+    ai_task_entity_id: str
     people: dict[str, Person]
     cameras: dict[str, Camera]
+    coordinator: Any | None = None
 
     @property
     def person_names(self) -> set[str]:

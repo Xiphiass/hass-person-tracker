@@ -25,16 +25,17 @@ from .const import (
 _LOGGER = logging.getLogger(__name__)
 
 _PERSON_NAME_MAX_LEN = 100
-_PERSON_NAME_INVALID = re.compile(r"[/\\<>:\"|?*\s]|^\.*$")
+_PERSON_NAME_INVALID = re.compile(r"[/\\<>:\"|?*]|^\.*$")
 
 
 def is_valid_person_name(name: str) -> bool:
     """Return True if *name* is a usable person name.
 
-    Names are used as folder names and unique keys, so whitespace and
-    path/OS-reserved characters are not allowed.
+    Names are stored under a filesystem-safe slug, so whitespace is
+    allowed, but path/OS-reserved characters and empty or
+    whitespace-only names are not.
     """
-    if not name or len(name) > _PERSON_NAME_MAX_LEN:
+    if not name.strip() or len(name) > _PERSON_NAME_MAX_LEN:
         return False
     return not _PERSON_NAME_INVALID.search(name)
 

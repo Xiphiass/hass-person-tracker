@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from datetime import timedelta
+from pathlib import Path
 
 import pytest
 
@@ -13,7 +14,7 @@ from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.device_registry import DeviceEntryType
 from homeassistant.setup import async_setup_component
-from tests.common import MockConfigEntry
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.person_tracker import const
 from custom_components.person_tracker.models import PersonTrackerData
@@ -22,6 +23,17 @@ from .conftest import add_camera, entry_data, setup_entry
 
 DOMAIN = const.DOMAIN
 LOGGER_NAME = f"custom_components.{DOMAIN}"
+
+
+@pytest.fixture
+def hass_config_dir(hass_tmp_config_dir: str) -> str:
+    """Isolate the config directory per test.
+
+    The reference-image tests place files under
+    ``<config>/person_tracker/people/``; a shared test config dir would leak
+    files between tests.
+    """
+    return hass_tmp_config_dir
 
 
 async def test_setup_creates_device_and_entity_per_person(
@@ -42,14 +54,12 @@ async def test_setup_creates_device_and_entity_per_person(
     ) as entry:
         assert entry.state is ConfigEntryState.LOADED
 
-        devices = dr.async_get(hass).devices
-        alice = next(
-            device for device in devices.values() if device.name == "Alice"
-        )
-        bob = next(device for device in devices.values() if device.name == "BobSmith")
+        device_registry = dr.async_get(hass)
+        devices = dr.async_entries_for_config_entry(device_registry, entry.entry_id)
+        alice = next(device for device in devices if device.name == "Alice")
+        bob = next(device for device in devices if device.name == "BobSmith")
         assert {alice.entry_type, bob.entry_type} == {DeviceEntryType.SERVICE}
-        assert alice.configuration_entry_id == entry.entry_id
-        assert bob.configuration_entry_id == entry.entry_id
+        assert {alice.config_entry_id, bob.config_entry_id} == {entry.entry_id}
 
         entities = er.async_get(hass)
         alice_entity = entities.async_get_entity_id(
@@ -60,8 +70,8 @@ async def test_setup_creates_device_and_entity_per_person(
         )
         assert alice_entity is not None
         assert bob_entity is not None
-        assert entities[alice_entity].device_id == alice.id
-        assert entities[bob_entity].device_id == bob.id
+        assert entities.async_get(alice_entity).device_id == alice.id
+        assert entities.async_get(bob_entity).device_id == bob.id
 
         # Entities are registered but have no data yet: state is unknown.
         assert hass.states.get(alice_entity).state == "unknown"
@@ -156,9 +166,7 @@ async def test_setup_skips_camera_without_area(
         assert entry.state is ConfigEntryState.LOADED
         data = hass.data[DOMAIN][entry.entry_id]
         assert list(data.cameras) == ["camera.back_door"]
-        assert any(
-            "camera.front_door" in record.message for record in caplog.records
-        )
+        assert any("camera.front_door" in record.message for record in caplog.records)
 
 
 async def test_setup_skips_invalid_triggers(
@@ -184,7 +192,9 @@ async def test_setup_skips_invalid_triggers(
         assert entry.state is ConfigEntryState.LOADED
         data = hass.data[DOMAIN][entry.entry_id]
         assert data.cameras["camera.front_door"].triggers == ["binary_sensor.good"]
-        assert any("sensor.bad" in record.message for record in caplog.records)
+        assert any(
+            "Camera camera.front_door" in record.message for record in caplog.records
+        )
 
 
 async def test_setup_skips_camera_with_no_valid_triggers(
@@ -219,13 +229,14 @@ async def test_setup_discovers_reference_images(
     hass.states.async_set("binary_sensor.front_door_person", "off")
 
     people_dir = hass.config.path("person_tracker/people")
-    alice_dir = f"{people_dir}/Alice"
-    bob_dir = f"{people_dir}/Bob"
-    for filename in (f"{alice_dir}/a.png", f"{alice_dir}/photo.jpg"):
-        with open(filename, "wb"):
-            pass
-    open(f"{alice_dir}/notes.txt", "wb").close()
-    open(f"{bob_dir}/face.png", "wb").close()
+    alice_dir = Path(people_dir) / "Alice"
+    bob_dir = Path(people_dir) / "Bob"
+    alice_dir.mkdir(parents=True)
+    bob_dir.mkdir(parents=True)
+    for filename in ("a.png", "photo.jpg"):
+        (alice_dir / filename).touch()
+    (alice_dir / "notes.txt").touch()
+    (bob_dir / "face.png").touch()
 
     async with setup_entry(
         hass,
@@ -237,16 +248,14 @@ async def test_setup_discovers_reference_images(
         ),
     ) as entry:
         data = hass.data[DOMAIN][entry.entry_id]
-        alice_images = [
-            path.name for path in data.people["Alice"].reference_images
-        ]
+        alice_images = [path.name for path in data.people["Alice"].reference_images]
         assert alice_images == ["a.png", "photo.jpg"]
         assert [path.name for path in data.people["Bob"].reference_images] == [
             "face.png"
         ]
         # Person with no folder yet.
         assert data.people["Bob"].last_seen is None
-        assert data.people["Bob"].location_area_id is None
+        assert data.people["Bob"].area_id is None
 
 
 async def test_reference_images_reload_picks_up_new_files(
@@ -256,34 +265,34 @@ async def test_reference_images_reload_picks_up_new_files(
     add_camera(hass, "camera.front_door", area_name="Garden")
     hass.states.async_set("binary_sensor.front_door_person", "off")
 
-    alice_dir = f"{hass.config.path('person_tracker')}/people/Alice"
-    first = f"{alice_dir}/first.png"
-    with open(first, "wb"):
-        pass
+    alice_dir = Path(hass.config.path("person_tracker/people")) / "Alice"
+    alice_dir.mkdir(parents=True)
+    first = alice_dir / "first.png"
+    first.touch()
 
     async with setup_entry(hass, entry_data()) as entry:
         data = hass.data[DOMAIN][entry.entry_id]
-        assert [p.name for p in data.people["Alice"].reference_images] == [
-            "first.png"
-        ]
+        assert [p.name for p in data.people["Alice"].reference_images] == ["first.png"]
 
         # Add another image, remove the first, then reload.
-        with open(f"{alice_dir}/second.jpg", "wb"):
-            pass
+        second = alice_dir / "second.jpg"
+        second.touch()
         first.unlink()
         await hass.config_entries.async_reload(entry.entry_id)
         await hass.async_block_till_done()
 
         data = hass.data[DOMAIN][entry.entry_id]
-        assert [p.name for p in data.people["Alice"].reference_images] == [
-            "second.jpg"
-        ]
+        assert [p.name for p in data.people["Alice"].reference_images] == ["second.jpg"]
 
 
-async def test_unload_removes_entities(
+async def test_unload_entry_stops_and_unloads_platforms(
     hass: HomeAssistant, default_ai_task: None
 ) -> None:
-    """Unloading the entry removes the tracker entities and their data."""
+    """Unloading stops the coordinator and unloads the platforms.
+
+    HA keeps registry entries on unload; the tracker state drops to
+    ``unavailable`` rather than being removed.
+    """
     add_camera(hass, "camera.front_door", area_name="Garden")
     hass.states.async_set("binary_sensor.front_door_person", "off")
 
@@ -298,12 +307,13 @@ async def test_unload_removes_entities(
     await hass.async_block_till_done()
     assert entry.state is ConfigEntryState.NOT_LOADED
     assert entry.entry_id not in hass.data[DOMAIN]
-    assert not hass.states.async_entity_ids("device_tracker")
+
+    state = hass.states.get("device_tracker.alice")
+    assert state is not None
+    assert state.state == "unavailable"
 
 
-async def test_ttl_field_is_parsed(
-    hass: HomeAssistant, default_ai_task: None
-) -> None:
+async def test_ttl_field_is_parsed(hass: HomeAssistant, default_ai_task: None) -> None:
     """Person TTL is stored as a timedelta on the runtime model."""
     add_camera(hass, "camera.front_door", area_name="Garden")
     hass.states.async_set("binary_sensor.front_door_person", "off")

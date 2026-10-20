@@ -12,6 +12,7 @@ PLATFORMS = [Platform.DEVICE_TRACKER]
 CONF_PEOPLE = "people"
 CONF_CAMERAS = "cameras"
 CONF_AI_TASK_ENTITY = "ai_task_entity"
+CONF_COOLDOWN = "cooldown"
 
 # Per-person config keys.
 CONF_PERSON_NAME = "name"
@@ -27,7 +28,9 @@ CONF_ADD_PERSON = "add_person"
 CONF_ADD_CAMERA = "add_camera"
 
 DEFAULT_TTL_MINUTES = 30
+DEFAULT_COOLDOWN_SECONDS = 30
 MAX_TTL_MINUTES = 1440
+MAX_COOLDOWN_SECONDS = 300
 
 # Reference images (ADR 0005): user-placed files under
 # <config>/person_tracker/people/<person>/<file>.
@@ -56,3 +59,7 @@ ATTR_LAST_SEEN = "last_seen"
 ATTR_LAST_LOCATION = "last_location"
 ATTR_AREA_ID = "area_id"
 ATTR_LAST_CAMERA = "last_camera"
+
+# Signals.
+SIGNAL_TRACKER_UPDATE = f"{DOMAIN}_tracker_update"
+SIGNAL_TRACKER_UPDATE_PERSON = f"{SIGNAL_TRACKER_UPDATE}_"

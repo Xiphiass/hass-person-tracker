@@ -59,9 +59,7 @@ def _get_person_schema(
             probatio.Optional(CONF_TTL, default=ttl): NumberSelector(
                 NumberSelectorConfig(min=1, max=1440, mode=NumberSelectorMode.BOX)
             ),
-            probatio.Optional(CONF_AUTHORITATIVE_TRACKER): EntitySelector(
-                EntitySelectorConfig(domain="device_tracker")
-            ),
+            probatio.Optional(CONF_AUTHORITATIVE_TRACKER): EntitySelector(),
         }
     )
 
@@ -69,11 +67,9 @@ def _get_person_schema(
 def _get_camera_schema() -> probatio.Schema:
     return probatio.Schema(
         {
-            probatio.Required(CONF_CAMERA): EntitySelector(
-                EntitySelectorConfig(domain="camera")
-            ),
+            probatio.Required(CONF_CAMERA): EntitySelector(),
             probatio.Required(CONF_TRIGGERS): EntitySelector(
-                EntitySelectorConfig(domain="binary_sensor", multiple=True)
+                EntitySelectorConfig(multiple=True)
             ),
         }
     )
@@ -86,11 +82,7 @@ _CAMERA_MORE_SCHEMA = probatio.Schema(
     {probatio.Required(CONF_ADD_CAMERA): BooleanSelector()}
 )
 _AI_TASK_SCHEMA = probatio.Schema(
-    {
-        probatio.Optional(CONF_AI_TASK_ENTITY): EntitySelector(
-            EntitySelectorConfig(domain="ai_task")
-        )
-    }
+    {probatio.Optional(CONF_AI_TASK_ENTITY): EntitySelector()}
 )
 
 
@@ -116,7 +108,7 @@ class PersonTrackerConfigFlow(ConfigFlow, domain=DOMAIN):
 
         Returns (person, errors); *person* is empty when *errors* is set.
         """
-        name = user_input[CONF_PERSON_NAME]
+        name = str(user_input[CONF_PERSON_NAME]).strip()
         errors: dict[str, str] = {}
         authoritative = user_input.get(CONF_AUTHORITATIVE_TRACKER)
         if not is_valid_person_name(name):
@@ -124,7 +116,9 @@ class PersonTrackerConfigFlow(ConfigFlow, domain=DOMAIN):
         elif any(p[CONF_PERSON_NAME] == name for p in self._people):
             errors[ERR_UNIQUE_PERSON] = ERR_UNIQUE_PERSON
         elif authoritative and self._domain_of(authoritative) != "device_tracker":
-            errors[ERR_INVALID_AUTHORITATIVE_TRACKER] = ERR_INVALID_AUTHORITATIVE_TRACKER
+            errors[ERR_INVALID_AUTHORITATIVE_TRACKER] = (
+                ERR_INVALID_AUTHORITATIVE_TRACKER
+            )
         if errors:
             return {}, errors
         person: dict[str, Any] = {

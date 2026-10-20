@@ -16,14 +16,24 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import STATE_UNKNOWN
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
+from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from .const import ATTR_AREA_ID, ATTR_LAST_CAMERA, ATTR_LAST_LOCATION, ATTR_LAST_SEEN, DOMAIN
+from .const import (
+    ATTR_AREA_ID,
+    ATTR_LAST_CAMERA,
+    ATTR_LAST_LOCATION,
+    ATTR_LAST_SEEN,
+    DOMAIN,
+    SIGNAL_TRACKER_UPDATE_PERSON,
+)
 from .models import Person, PersonTrackerData
 
 
 async def async_setup_entry(
-    hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddConfigEntryEntitiesCallback
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     """Create one tracker entity per known person."""
     data: PersonTrackerData = hass.data[DOMAIN][entry.entry_id]
@@ -39,7 +49,9 @@ class PersonTrackerEntity(TrackerEntity):
     _attr_name = None
     # BaseTrackerEntity annotates `_attr_device_info` as None, but platform
     # classes are expected to override it (see Entity.device_info).
-    _attr_device_info: DeviceInfo | None  # pyright: ignore[reportIncompatibleVariableOverride]
+    _attr_device_info: (
+        DeviceInfo | None
+    )  # pyright: ignore[reportIncompatibleVariableOverride]
 
     def __init__(self, entry: ConfigEntry, person: Person) -> None:
         """Initialize the entity for *person* from config entry *entry*."""
@@ -52,6 +64,20 @@ class PersonTrackerEntity(TrackerEntity):
             entry_type=DeviceEntryType.SERVICE,
         )
 
+    async def async_added_to_hass(self) -> None:
+        """Connect to dispatcher."""
+        self.async_on_remove(
+            async_dispatcher_connect(
+                self.hass,
+                f"{SIGNAL_TRACKER_UPDATE_PERSON}{self._person.slug}",
+                self._async_handle_update,
+            )
+        )
+
+    async def _async_handle_update(self) -> None:
+        """Handle update."""
+        self.async_write_ha_state()
+
     @property
     def state(self) -> str:
         """The display name of the last seen HA area, or unknown."""
@@ -59,7 +85,9 @@ class PersonTrackerEntity(TrackerEntity):
 
     @property
     @override
-    def extra_state_attributes(self) -> dict[str, Any] | None:  # pyright: ignore[reportIncompatibleVariableOverride]
+    def extra_state_attributes(
+        self,
+    ) -> dict[str, Any] | None:  # pyright: ignore[reportIncompatibleVariableOverride]
         """Last seen (timestamp), last location, area ID, last camera."""
         person = self._person
         attributes: dict[str, Any] = {}

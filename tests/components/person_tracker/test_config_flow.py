@@ -16,9 +16,7 @@ DOMAIN = const.DOMAIN
 
 async def _init_user_flow(hass: HomeAssistant) -> dict:
     """Start a fresh user-initiated flow."""
-    return await hass.config_entries.flow.async_init(
-        DOMAIN, context={"source": "user"}
-    )
+    return await hass.config_entries.flow.async_init(DOMAIN, context={"source": "user"})
 
 
 async def test_flow_creates_entry_with_default_ai_task(
@@ -197,7 +195,7 @@ async def test_flow_ai_task_override_stored(
 
 @pytest.mark.parametrize(
     ("bad_name"),
-    ["", "  ", "Alice Smith", "Bad/Name", "Bad\\Name", ".", "..", "a" * 101],
+    ["", "  ", "Bad:Name", "Bad/Name", "Bad\\Name", ".", "..", "a" * 101],
 )
 async def test_flow_invalid_person_name(
     hass: HomeAssistant,
@@ -357,7 +355,10 @@ async def test_flow_trigger_must_be_binary_sensor(
     )
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
-        {const.CONF_CAMERA: "camera.front_door", const.CONF_TRIGGERS: ["sensor.not_a_sensor"]},
+        {
+            const.CONF_CAMERA: "camera.front_door",
+            const.CONF_TRIGGERS: ["sensor.not_a_sensor"],
+        },
     )
     assert result["type"] is FlowResultType.FORM
     assert const.ERR_INVALID_TRIGGER in result["errors"]

@@ -14,7 +14,7 @@ from homeassistant.helpers import area_registry as ar
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from homeassistant.setup import async_setup_component
-from tests.common import MockConfigEntry, get_test_config_dir
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.person_tracker import const
 
@@ -22,15 +22,25 @@ DOMAIN = const.DOMAIN
 
 
 @pytest.fixture(autouse=True)
-async def homeassistant_core(hass: HomeAssistant) -> None:
-    """Set up ``homeassistant`` component first.
+def custom_integrations_enabled(enable_custom_integrations: None) -> None:
+    """Let the harness load this repo's ``custom_components/`` in every test.
+
+    The harness pre-seeds an empty custom-components cache; the
+    ``enable_custom_integrations`` plugin fixture pops it so the loader
+    actually discovers ``custom_components.person_tracker``.
+    """
+
+
+@pytest.fixture(autouse=True)
+async def homeassistant_core(
+    hass: HomeAssistant, custom_integrations_enabled: None
+) -> None:
+    """Set up the ``homeassistant`` component first.
 
     Conversation (or ai_task) registers a started-callback that
     reads ``hass.data[DATA_EXPOSED_ENTITIES]``, only once the
     ``homeassistant`` component is set up.
     """
-    # Force the test harness to use our custom components path
-    hass.config.config_dir = get_test_config_dir()
     assert await async_setup_component(hass, "homeassistant", {})
 
 
@@ -71,6 +81,8 @@ def add_camera(
         er.async_get(hass).async_update_entity(entry.entity_id, area_id=area.id)
     elif device_area_name:
         area = ar.async_get(hass).async_get_or_create(device_area_name)
+        config_entry = MockConfigEntry(domain="test", entry_id=config_entry_id)
+        config_entry.add_to_hass(hass)
         device = dr.async_get(hass).async_get_or_create(
             config_entry_id=config_entry_id,
             identifiers={(DOMAIN, f"cam-device-{entry.entity_id}")},
