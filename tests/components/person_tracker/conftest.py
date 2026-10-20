@@ -22,7 +22,9 @@ DOMAIN = const.DOMAIN
 
 
 @pytest.fixture(autouse=True)
-async def homeassistant_core(hass: HomeAssistant) -> None:
+async def homeassistant_core(
+    hass: HomeAssistant, enable_custom_integrations: None
+) -> None:
     """Set up ``homeassistant`` component first.
 
     Conversation (or ai_task) registers a started-callback that
@@ -71,6 +73,8 @@ def add_camera(
         er.async_get(hass).async_update_entity(entry.entity_id, area_id=area.id)
     elif device_area_name:
         area = ar.async_get(hass).async_get_or_create(device_area_name)
+        if hass.config_entries.async_get_entry(config_entry_id) is None:
+            MockConfigEntry(domain="test", entry_id=config_entry_id).add_to_hass(hass)
         device = dr.async_get(hass).async_get_or_create(
             config_entry_id=config_entry_id,
             identifiers={(DOMAIN, f"cam-device-{entry.entity_id}")},

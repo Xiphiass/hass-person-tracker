@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from homeassistant.core import HomeAssistant
-from homeassistant.data_entry_flow import FlowResultType
+from homeassistant.data_entry_flow import FlowResultType, InvalidData
 
 from custom_components.person_tracker import const
 
@@ -16,9 +16,7 @@ DOMAIN = const.DOMAIN
 
 async def _init_user_flow(hass: HomeAssistant) -> dict:
     """Start a fresh user-initiated flow."""
-    return await hass.config_entries.flow.async_init(
-        DOMAIN, context={"source": "user"}
-    )
+    return await hass.config_entries.flow.async_init(DOMAIN, context={"source": "user"})
 
 
 async def test_flow_creates_entry_with_default_ai_task(
@@ -106,7 +104,7 @@ async def test_flow_multiple_people_and_cameras(
     )
     assert result["step_id"] == "person_add"
     result = await hass.config_entries.flow.async_configure(
-        result["flow_id"], {const.CONF_PERSON_NAME: "Bob Smith"}
+        result["flow_id"], {const.CONF_PERSON_NAME: "BobSmith"}
     )
     assert result["step_id"] == "person_more"
     result = await hass.config_entries.flow.async_configure(
@@ -149,7 +147,7 @@ async def test_flow_multiple_people_and_cameras(
             const.CONF_TTL: 45,
             const.CONF_AUTHORITATIVE_TRACKER: "device_tracker.alice_phone",
         },
-        {const.CONF_PERSON_NAME: "Bob Smith", const.CONF_TTL: 30},
+        {const.CONF_PERSON_NAME: "BobSmith", const.CONF_TTL: 30},
     ]
     assert result["data"][const.CONF_CAMERAS] == [
         {
@@ -243,11 +241,22 @@ async def test_flow_invalid_authoritative_tracker(
     """An authoritative tracker that is not a device_tracker is rejected."""
     hass.states.async_set("sensor.not_a_tracker", "1")
     result = await _init_user_flow(hass)
+    # The entity selector restricts the domain, so the form schema rejects it.
+    with pytest.raises(InvalidData):
+        await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {
+                const.CONF_PERSON_NAME: "Alice",
+                const.CONF_AUTHORITATIVE_TRACKER: "sensor.not_a_tracker",
+            },
+        )
+
+    # A device_tracker that does not exist passes the schema but not validation.
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
         {
             const.CONF_PERSON_NAME: "Alice",
-            const.CONF_AUTHORITATIVE_TRACKER: "sensor.not_a_tracker",
+            const.CONF_AUTHORITATIVE_TRACKER: "device_tracker.gone",
         },
     )
     assert result["type"] is FlowResultType.FORM
@@ -295,15 +304,14 @@ async def test_flow_camera_must_be_camera_entity(
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {const.CONF_ADD_PERSON: False}
     )
-    result = await hass.config_entries.flow.async_configure(
-        result["flow_id"],
-        {
-            const.CONF_CAMERA: "sensor.front_door",
-            const.CONF_TRIGGERS: ["binary_sensor.front_door_person"],
-        },
-    )
-    assert result["type"] is FlowResultType.FORM
-    assert const.ERR_INVALID_CAMERA in result["errors"]
+    with pytest.raises(InvalidData):
+        await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {
+                const.CONF_CAMERA: "sensor.front_door",
+                const.CONF_TRIGGERS: ["binary_sensor.front_door_person"],
+            },
+        )
 
 
 async def test_flow_duplicate_camera(
@@ -355,12 +363,14 @@ async def test_flow_trigger_must_be_binary_sensor(
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {const.CONF_ADD_PERSON: False}
     )
-    result = await hass.config_entries.flow.async_configure(
-        result["flow_id"],
-        {const.CONF_CAMERA: "camera.front_door", const.CONF_TRIGGERS: ["sensor.not_a_sensor"]},
-    )
-    assert result["type"] is FlowResultType.FORM
-    assert const.ERR_INVALID_TRIGGER in result["errors"]
+    with pytest.raises(InvalidData):
+        await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {
+                const.CONF_CAMERA: "camera.front_door",
+                const.CONF_TRIGGERS: ["sensor.not_a_sensor"],
+            },
+        )
 
 
 async def test_flow_camera_needs_at_least_one_trigger(
@@ -421,7 +431,6 @@ async def test_flow_invalid_ai_task_entity(
     """An AI task override that does not exist is rejected."""
     add_camera(hass, "camera.front_door", area_name="Garden")
     hass.states.async_set("binary_sensor.front_door_person", "off")
-    hass.states.async_set("sensor.gone", "1")
 
     result = await _init_user_flow(hass)
     result = await hass.config_entries.flow.async_configure(
@@ -441,7 +450,7 @@ async def test_flow_invalid_ai_task_entity(
         result["flow_id"], {const.CONF_ADD_CAMERA: False}
     )
     result = await hass.config_entries.flow.async_configure(
-        result["flow_id"], {const.CONF_AI_TASK_ENTITY: "sensor.gone"}
+        result["flow_id"], {const.CONF_AI_TASK_ENTITY: "ai_task.gone"}
     )
     assert result["type"] is FlowResultType.FORM
     assert const.ERR_INVALID_AI_TASK_ENTITY in result["errors"]

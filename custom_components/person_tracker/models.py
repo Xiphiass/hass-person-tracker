@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from .const import DEFAULT_TTL_MINUTES
@@ -27,6 +27,11 @@ class Person:
     area_id: str | None = None
     last_seen: datetime | None = None
     last_camera: str | None = None
+
+    @property
+    def ttl(self) -> timedelta:
+        """How long a sighting stays valid before the state becomes unknown."""
+        return timedelta(minutes=self.ttl_minutes)
 
     @property
     def slug(self) -> str:

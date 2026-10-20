@@ -118,12 +118,14 @@ async def _async_build_entry_data(
                 camera_entity_id,
             )
             continue
-        triggers = valid_triggers(hass, camera_data.get(CONF_TRIGGERS, []))
-        if len(triggers) < len(camera_data.get(CONF_TRIGGERS, [])):
+        configured_triggers = camera_data.get(CONF_TRIGGERS, [])
+        triggers = valid_triggers(hass, configured_triggers)
+        if dropped := [t for t in configured_triggers if t not in triggers]:
             _LOGGER.error(
-                "Camera %s: one or more triggers are no longer binary_sensor "
-                "entities and were skipped.",
+                "Camera %s: triggers %s are no longer binary_sensor entities "
+                "and were skipped.",
                 camera_entity_id,
+                ", ".join(dropped),
             )
         if not triggers:
             _LOGGER.error(
