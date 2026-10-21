@@ -203,7 +203,7 @@ class DetectionCoordinator:
         self._last_run[camera.entity_id] = now
         try:
             await self._async_detect(camera)
-        except Exception:  # noqa: BLE001 - a failed run must not take HA down
+        except Exception:
             _LOGGER.exception("Detection run failed for %s", camera.entity_id)
 
     async def _async_detect(self, camera: Camera) -> None:

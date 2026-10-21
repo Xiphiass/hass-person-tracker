@@ -91,13 +91,15 @@ def test_malformed_top_level_raises_value_error() -> None:
     (Issue #5).
     """
     for data in (None, 3.14, "Alice", {"foo": 1}, {}):
-        pytest.raises(ValueError, validate_ai_response, data), data
+        with pytest.raises(ValueError):
+            validate_ai_response(data)
 
 
 def test_persons_not_a_list_raises_value_error() -> None:
     """A non-list 'persons' value is a failed identification, not no hits."""
     for data in ({"persons": {"name": "Alice"}}, {"persons": 42}, {"people": 42}):
-        pytest.raises(ValueError, validate_ai_response, data), data
+        with pytest.raises(ValueError):
+            validate_ai_response(data)
 
 
 def test_response_shape_matches_what_detection_expects() -> None:
