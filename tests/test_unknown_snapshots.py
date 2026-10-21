@@ -34,12 +34,19 @@ CAMERA = "camera.front_door"
 IMAGE_BYTES = b"\xff\xd8\xff\xe0fake-jpeg\xff\xd9"
 
 
-def _ai_result(names: list[str]) -> GenDataTaskResult:
-    """A well-formed AI task response for *names*."""
-    return GenDataTaskResult(
-        conversation_id="test-conversation",
-        data={"persons": [{"name": name, "confidence": 0.9} for name in names]},
-    )
+def _ai_result(
+    names: list[str], unknown_persons: int | None = None
+) -> GenDataTaskResult:
+    """A well-formed AI task response for *names*.
+
+    *unknown_persons* is left out of the response when ``None``.
+    """
+    data: dict[str, Any] = {
+        "persons": [{"name": name, "confidence": 0.9} for name in names]
+    }
+    if unknown_persons is not None:
+        data["unknown_persons"] = unknown_persons
+    return GenDataTaskResult(conversation_id="test-conversation", data=data)
 
 
 def _mock_ai(result: GenDataTaskResult):
@@ -184,15 +191,120 @@ async def test_identified_person_does_not_save_snapshot(
     add_camera(hass, CAMERA, area_name="Garden")
     hass.states.async_set(TRIGGER, "off")
 
-    with _mock_ai(_ai_result(["Alice"])), _mock_image() as image_mock:
+    with _mock_ai(_ai_result(["Alice"])), _mock_image():
         async with setup_entry(
             hass, entry_data(cooldown_seconds=0), people=[person("Alice")]
         ):
             await _fire_edge(hass)
 
-            image_mock.assert_not_awaited()
             assert _saved_snapshots(unknown_snapshots_dir) == []
             assert _tracker_state(hass, "Alice") == "Garden"
+
+
+async def test_empty_scene_saves_nothing(
+    hass: HomeAssistant,
+    default_ai_task: None,
+    unknown_snapshots_dir: Path,
+) -> None:
+    """A trigger with no one in view at all is not an unidentified sighting."""
+    add_camera(hass, CAMERA, area_name="Garden")
+    hass.states.async_set(TRIGGER, "off")
+
+    with _mock_ai(_ai_result([], unknown_persons=0)), _mock_image():
+        async with setup_entry(
+            hass, entry_data(cooldown_seconds=0), people=[person("Alice")]
+        ):
+            await _fire_edge(hass)
+
+            assert _saved_snapshots(unknown_snapshots_dir) == []
+            assert _tracker_state(hass, "Alice") == "unknown"
+
+
+async def test_unknown_person_count_saves_snapshot(
+    hass: HomeAssistant,
+    default_ai_task: None,
+    unknown_snapshots_dir: Path,
+) -> None:
+    """A visible non-household person saves the snapshot."""
+    add_camera(hass, CAMERA, area_name="Garden")
+    hass.states.async_set(TRIGGER, "off")
+
+    with _mock_ai(_ai_result([], unknown_persons=1)), _mock_image():
+        async with setup_entry(
+            hass, entry_data(cooldown_seconds=0), people=[person("Alice")]
+        ):
+            await _fire_edge(hass)
+
+            assert len(_saved_snapshots(unknown_snapshots_dir)) == 1
+            assert _tracker_state(hass, "Alice") == "unknown"
+
+
+async def test_saved_snapshot_is_taken_before_the_ai_call(
+    hass: HomeAssistant,
+    default_ai_task: None,
+    unknown_snapshots_dir: Path,
+) -> None:
+    """The saved frame is the one fetched at trigger time, not after the AI ran."""
+    add_camera(hass, CAMERA, area_name="Garden")
+    hass.states.async_set(TRIGGER, "off")
+
+    calls: list[str] = []
+    frames = iter([b"trigger-time-frame", b"later-frame"])
+
+    async def _fake_image(*_args: Any, **_kwargs: Any) -> Image:
+        calls.append("image")
+        return Image(content_type="image/jpeg", content=next(frames))
+
+    async def _fake_ai(*_args: Any, **_kwargs: Any) -> GenDataTaskResult:
+        calls.append("ai")
+        return _ai_result([], unknown_persons=1)
+
+    with (
+        patch.object(detection_module, "async_generate_data", new=_fake_ai),
+        patch.object(detection_module, "async_get_image", new=_fake_image),
+    ):
+        async with setup_entry(
+            hass, entry_data(cooldown_seconds=0), people=[person("Alice")]
+        ):
+            await _fire_edge(hass)
+
+            assert calls == ["image", "ai"]
+            files = _saved_snapshots(unknown_snapshots_dir)
+            assert len(files) == 1
+            assert files[0].read_bytes() == b"trigger-time-frame"
+
+
+async def test_snapshot_write_failure_is_a_warning(
+    hass: HomeAssistant,
+    default_ai_task: None,
+    unknown_snapshots_dir: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """An unwritable snapshot is a warning, not a failed detection run."""
+    add_camera(hass, CAMERA, area_name="Garden")
+    hass.states.async_set(TRIGGER, "off")
+
+    with (
+        _mock_ai(_ai_result([])),
+        _mock_image(),
+        patch.object(
+            detection_module, "save_unknown_snapshot", side_effect=OSError("disk full")
+        ),
+    ):
+        async with setup_entry(
+            hass, entry_data(cooldown_seconds=0), people=[person("Alice")]
+        ):
+            await _fire_edge(hass)
+
+            assert _tracker_state(hass, "Alice") == "unknown"
+            assert any(
+                "could not be saved" in record.message
+                for record in caplog.records
+                if record.levelno == logging.WARNING
+            )
+            assert not any(
+                "Detection run failed" in record.message for record in caplog.records
+            )
 
 
 async def test_snapshot_fetch_failure_keeps_state(
@@ -242,6 +354,38 @@ async def test_purge_deletes_only_old_files(
     assert removed == 1
     assert not stale.exists()
     assert recent.exists()
+
+
+async def test_purge_skips_files_it_cannot_delete(
+    hass: HomeAssistant,
+    unknown_snapshots_dir: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """One undeletable file is logged and skipped; the others are still purged."""
+    stuck = _make_snapshot(unknown_snapshots_dir, "a-stuck.jpeg", age_days=8)
+    stale = _make_snapshot(unknown_snapshots_dir, "b-stale.jpeg", age_days=8)
+    real_unlink = Path.unlink
+
+    def _unlink(self: Path, missing_ok: bool = False) -> None:
+        if self.name == stuck.name:
+            raise PermissionError("permission denied")
+        real_unlink(self, missing_ok=missing_ok)
+
+    with patch.object(Path, "unlink", _unlink):
+        removed = await hass.async_add_executor_job(
+            purge_unknown_snapshots,
+            hass,
+            timedelta(days=const.UNKNOWN_SNAPSHOT_RETENTION_DAYS),
+        )
+
+    assert removed == 1
+    assert stuck.exists()
+    assert not stale.exists()
+    assert any(
+        "Could not purge unknown snapshot" in record.message
+        for record in caplog.records
+        if record.levelno == logging.WARNING
+    )
 
 
 async def test_purge_missing_folder_returns_zero(

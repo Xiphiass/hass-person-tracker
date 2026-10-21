@@ -16,7 +16,7 @@ from typing import Any, TypedDict
 
 import probatio
 from homeassistant.components.ai_task.task import async_generate_data
-from homeassistant.components.camera import async_get_image
+from homeassistant.components.camera import Image, async_get_image
 from homeassistant.const import STATE_OFF, STATE_ON
 from homeassistant.core import Event, HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
@@ -46,7 +46,9 @@ from .models import Camera, Person, PersonTrackerData, person_slug
 _LOGGER = getLogger(__package__)
 
 # Expected shape of the AI task response (Issue #3).
-AI_RESULT_STRUCTURE = probatio.Schema({"persons": [{"name": str, "confidence": float}]})
+AI_RESULT_STRUCTURE = probatio.Schema(
+    {"persons": [{"name": str, "confidence": float}], "unknown_persons": int}
+)
 
 
 class _PersonHit(TypedDict):
@@ -93,6 +95,20 @@ def validate_ai_response(data: Any) -> list[_PersonHit]:
             confidence = 1.0
         hits.append(_PersonHit(name=name.strip(), confidence=float(confidence)))
     return hits
+
+
+def unknown_person_count(data: Any) -> int | None:
+    """The AI task's count of visible non-household people, if it gave one.
+
+    ``None`` means the response carries no usable count, so it cannot tell
+    an unknown person apart from an empty scene.
+    """
+    if not isinstance(data, dict):
+        return None
+    count = data.get("unknown_persons")
+    if not isinstance(count, int) or isinstance(count, bool) or count < 0:
+        return None
+    return count
 
 
 def _build_instructions(data: PersonTrackerData) -> str:
@@ -193,6 +209,9 @@ class DetectionCoordinator:
                 camera.entity_id,
             )
             return
+        # Grab the frame to keep before the (slow) AI call, so a saved unknown
+        # snapshot shows the scene at trigger time, not seconds later.
+        image = await self._async_fetch_snapshot(camera)
         result = await async_generate_data(
             self._hass,
             task_name=AI_TASK_NAME,
@@ -219,23 +238,37 @@ class DetectionCoordinator:
             async_dispatcher_send(
                 self._hass, f"{SIGNAL_TRACKER_UPDATE_PERSON}{person.subentry_id}"
             )
-        if not identified:
-            # No known person was identified, so no tracker state changes.
-            # Preserve the sighting as an unknown snapshot (Issue #4).
-            await self._async_save_unknown_snapshot(camera, area)
+        if identified:
+            return
+        # No known person was identified, so no tracker state changes.
+        if not hits and unknown_person_count(result.data) == 0:
+            # The AI saw no one at all: a false trigger, not a sighting.
+            _LOGGER.debug("No one visible on %s; nothing to save.", camera.entity_id)
+            return
+        # Preserve the sighting as an unknown snapshot (Issue #4).
+        await self._async_save_unknown_snapshot(camera, area, image)
 
-    async def _async_save_unknown_snapshot(
-        self, camera: Camera, area: ar.AreaEntry
-    ) -> None:
-        """Save a fresh snapshot of *camera* as an unknown snapshot (Issue #4).
+    async def _async_fetch_snapshot(self, camera: Camera) -> Image | None:
+        """Fetch a snapshot of *camera*; ``None`` if the camera can't provide one.
 
-        The saved image is the record of an unidentified sighting and the raw
-        material for future self-learning. A failed fetch must not break the
-        detection run.
+        A failed fetch must not stop the identification run.
         """
         try:
-            image = await async_get_image(self._hass, camera.entity_id)
-        except HomeAssistantError:
+            return await async_get_image(self._hass, camera.entity_id)
+        except HomeAssistantError as err:
+            _LOGGER.debug("Could not fetch a snapshot of %s: %s", camera.entity_id, err)
+            return None
+
+    async def _async_save_unknown_snapshot(
+        self, camera: Camera, area: ar.AreaEntry, image: Image | None
+    ) -> None:
+        """Save *image* of *camera* as an unknown snapshot (Issue #4).
+
+        The saved image is the record of an unidentified sighting and the raw
+        material for future self-learning. A failed fetch or write must not
+        break the detection run.
+        """
+        if image is None:
             _LOGGER.warning(
                 "No household member identified on %s (%s), but the snapshot "
                 "could not be fetched.",
@@ -243,14 +276,24 @@ class DetectionCoordinator:
                 area.name,
             )
             return
-        path = await self._hass.async_add_executor_job(
-            save_unknown_snapshot,
-            self._hass,
-            camera.entity_id,
-            area.name,
-            image.content,
-            image.content_type,
-        )
+        try:
+            path = await self._hass.async_add_executor_job(
+                save_unknown_snapshot,
+                self._hass,
+                camera.entity_id,
+                area.name,
+                image.content,
+                image.content_type,
+            )
+        except OSError as err:
+            _LOGGER.warning(
+                "No household member identified on %s (%s), but the snapshot "
+                "could not be saved: %s",
+                camera.entity_id,
+                area.name,
+                err,
+            )
+            return
         _LOGGER.info(
             "No household member identified on %s (%s) at %s; saved unknown "
             "snapshot %s.",

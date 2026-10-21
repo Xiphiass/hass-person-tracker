@@ -67,7 +67,9 @@ AI_TASK_INSTRUCTIONS = (
     'camera snapshot. Respond in JSON: an object with a "persons" list '
     'containing {"name": string, "confidence": number} objects, one per '
     "visible household member, using their exact configured names. If no "
-    'household member is visible, respond with {"persons": []}.'
+    'household member is visible, use an empty "persons" list. Also include '
+    '"unknown_persons": the number of visible people who are not listed '
+    "household members (0 if there are none, or if no one is visible at all)."
 )
 
 # Unknown snapshots (Issue #4): the folder under <config>/person_tracker/,

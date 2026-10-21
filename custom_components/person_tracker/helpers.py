@@ -4,6 +4,7 @@ unknown snapshots."""
 from __future__ import annotations
 
 from datetime import timedelta
+from logging import getLogger
 from mimetypes import guess_extension
 from pathlib import Path
 
@@ -17,6 +18,8 @@ from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN, PEOPLE_DIR, REFERENCE_IMAGE_EXTENSIONS, UNKNOWN_SNAPSHOTS_DIR
 from .models import person_slug
+
+_LOGGER = getLogger(__package__)
 
 
 def get_entity_area_id(hass: HomeAssistant, entity_id: str) -> str | None:
@@ -121,7 +124,9 @@ def save_unknown_snapshot(
 def purge_unknown_snapshots(hass: HomeAssistant, max_age: timedelta) -> int:
     """Delete unknown snapshots older than *max_age*; return how many.
 
-    Does blocking I/O; run it in the executor.
+    A file that can't be checked or deleted is logged and skipped, so it
+    never blocks the purge of the others. Does blocking I/O; run it in the
+    executor.
     """
     folder = get_unknown_snapshots_dir(hass)
     if not folder.is_dir():
@@ -129,9 +134,12 @@ def purge_unknown_snapshots(hass: HomeAssistant, max_age: timedelta) -> int:
     cutoff = dt_util.now() - max_age
     removed = 0
     for path in folder.iterdir():
-        if not path.is_file():
-            continue
-        if dt_util.utc_from_timestamp(path.stat().st_mtime) < cutoff:
-            path.unlink(missing_ok=True)
-            removed += 1
+        try:
+            if not path.is_file():
+                continue
+            if dt_util.utc_from_timestamp(path.stat().st_mtime) < cutoff:
+                path.unlink(missing_ok=True)
+                removed += 1
+        except OSError as err:
+            _LOGGER.warning("Could not purge unknown snapshot %s: %s", path, err)
     return removed
