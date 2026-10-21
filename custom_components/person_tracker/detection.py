@@ -120,10 +120,7 @@ def validate_ai_response(data: Any) -> list[dict[str, Any]]:
                 thumbprint=thumbprint if isinstance(thumbprint, str) else None,
             )
         )
-    return [
-        {k: v for k, v in hit.items() if v is not None}
-        for hit in hits
-    ]
+    return [{k: v for k, v in hit.items() if v is not None} for hit in hits]
 
 
 def unknown_person_count(data: Any) -> int | None:
