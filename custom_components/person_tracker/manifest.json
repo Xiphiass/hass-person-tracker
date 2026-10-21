@@ -4,8 +4,9 @@
   "codeowners": ["@Xiphiass"],
   "config_flow": true,
   "documentation": "https://github.com/Xiphiass/hass-person-tracker",
+  "issue_tracker": "https://github.com/Xiphiass/hass-person-tracker/issues",
   "iot_class": "calculated",
   "requirements": [],
-  "version": "0.1.0",
+  "version": "0.1.0-rc1",
   "dependencies": ["ai_task"]
 }
