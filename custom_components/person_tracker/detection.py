@@ -5,6 +5,10 @@ the matching camera's snapshot is sent to the configured AI task entity,
 which identifies the household members in the scene (Issue #3). Each
 identified person's location, area, last_seen and last_camera are updated,
 and their tracker entity is nudged through a per-person dispatcher signal.
+
+Failure policy (Issue #5): a failed snapshot or a failed AI call logs an
+error and aborts the run — no tracker state changes, no retry is scheduled,
+and the next trigger edge runs a fresh detection.
 """
 
 from __future__ import annotations
@@ -15,7 +19,11 @@ from logging import getLogger
 from typing import Any, TypedDict
 
 import probatio
-from homeassistant.components.ai_task.task import async_generate_data
+import probatio.error
+from homeassistant.components.ai_task.task import (
+    GenDataTaskResult,
+    async_generate_data,
+)
 from homeassistant.components.camera import Image, async_get_image
 from homeassistant.const import STATE_OFF, STATE_ON
 from homeassistant.core import Event, HomeAssistant
@@ -62,22 +70,22 @@ def validate_ai_response(data: Any) -> list[_PersonHit]:
     """Normalize the AI task's response into person hits.
 
     The expected shape is ``{"persons": [{"name": str, "confidence": float}]}``;
-    a bare list of names (or name dicts) is also accepted. Unparseable content
-    yields an empty list — a bad AI response must never corrupt tracker state.
+    a bare list of names (or name dicts) is also accepted.
+
+    Raises ValueError when *data* is not the documented persons envelope —
+    a malformed response is a failed identification (Issue #5), never an
+    empty (false-negative) result.
     """
     if isinstance(data, dict):
         entries = data.get("persons", data.get("people"))
         if entries is None:
-            _LOGGER.warning("AI task response has no 'persons' list: %r", data)
-            return []
+            raise ValueError(f"AI response has no 'persons' list: {data!r}")
     elif isinstance(data, list):
         entries = data
     else:
-        _LOGGER.warning("AI task response is not a dict or list: %r", data)
-        return []
+        raise ValueError(f"AI response is not a dict or list: {data!r}")
     if not isinstance(entries, list):
-        _LOGGER.warning("AI task 'persons' is not a list: %r", entries)
-        return []
+        raise ValueError(f"AI response 'persons' is not a list: {entries!r}")
 
     hits: list[_PersonHit] = []
     for entry in entries:
@@ -199,7 +207,12 @@ class DetectionCoordinator:
             _LOGGER.exception("Detection run failed for %s", camera.entity_id)
 
     async def _async_detect(self, camera: Camera) -> None:
-        """Run the AI task on a snapshot of *camera* and apply its result."""
+        """Run the AI task on a snapshot of *camera* and apply its result.
+
+        Failure policy (Issue #5): a failed snapshot or a failed AI call
+        logs an error and aborts the run — no tracker state changes,
+        nothing is retried, and the next trigger edge runs fresh.
+        """
         # The area is looked up at trigger time so post-setup area changes
         # apply without a reload (ADR 0003).
         area = get_camera_area(self._hass, camera.entity_id)
@@ -211,18 +224,39 @@ class DetectionCoordinator:
             return
         # Grab the frame to keep before the (slow) AI call, so a saved unknown
         # snapshot shows the scene at trigger time, not seconds later.
-        image = await self._async_fetch_snapshot(camera)
-        result = await async_generate_data(
-            self._hass,
-            task_name=AI_TASK_NAME,
-            entity_id=self._data.ai_task_entity_id,
-            instructions=_build_instructions(self._data),
-            structure=AI_RESULT_STRUCTURE,
-            attachments=[
-                {"media_content_id": f"media-source://camera/{camera.entity_id}"}
-            ],
-        )
-        hits = validate_ai_response(result.data)
+        try:
+            image = await self._async_fetch_snapshot(camera)
+        except HomeAssistantError as err:
+            _LOGGER.error("Snapshot failed for %s: %s", camera.entity_id, err)
+            return
+        result: GenDataTaskResult
+        try:
+            result = await async_generate_data(
+                self._hass,
+                task_name=AI_TASK_NAME,
+                entity_id=self._data.ai_task_entity_id,
+                instructions=_build_instructions(self._data),
+                structure=AI_RESULT_STRUCTURE,
+                attachments=[
+                    {"media_content_id": f"media-source://camera/{camera.entity_id}"}
+                ],
+            )
+        # Provider-side failures (down, timeout, malformed structured
+        # output) surface as HomeAssistantError or a probatio validation
+        # error, depending on the AI Task integration.
+        except (HomeAssistantError, probatio.error.Error) as err:
+            _LOGGER.error("Identification failed for %s: %s", camera.entity_id, err)
+            return
+        try:
+            hits = validate_ai_response(result.data)
+        except ValueError as err:
+            _LOGGER.error(
+                "Malformed AI response for %s: %s; response: %r",
+                camera.entity_id,
+                err,
+                result.data,
+            )
+            return
         identified = False
         now = dt_util.now()
         for hit in hits:
@@ -248,34 +282,23 @@ class DetectionCoordinator:
         # Preserve the sighting as an unknown snapshot (Issue #4).
         await self._async_save_unknown_snapshot(camera, area, image)
 
-    async def _async_fetch_snapshot(self, camera: Camera) -> Image | None:
-        """Fetch a snapshot of *camera*; ``None`` if the camera can't provide one.
+    async def _async_fetch_snapshot(self, camera: Camera) -> Image:
+        """Fetch a snapshot of *camera*.
 
-        A failed fetch must not stop the identification run.
+        Raises HomeAssistantError when the camera can't provide one; the
+        caller skips the run without changing state (Issue #5).
         """
-        try:
-            return await async_get_image(self._hass, camera.entity_id)
-        except HomeAssistantError as err:
-            _LOGGER.debug("Could not fetch a snapshot of %s: %s", camera.entity_id, err)
-            return None
+        return await async_get_image(self._hass, camera.entity_id)
 
     async def _async_save_unknown_snapshot(
-        self, camera: Camera, area: ar.AreaEntry, image: Image | None
+        self, camera: Camera, area: ar.AreaEntry, image: Image
     ) -> None:
         """Save *image* of *camera* as an unknown snapshot (Issue #4).
 
         The saved image is the record of an unidentified sighting and the raw
-        material for future self-learning. A failed fetch or write must not
-        break the detection run.
+        material for future self-learning. A failed write must not break the
+        detection run.
         """
-        if image is None:
-            _LOGGER.warning(
-                "No household member identified on %s (%s), but the snapshot "
-                "could not be fetched.",
-                camera.entity_id,
-                area.name,
-            )
-            return
         try:
             path = await self._hass.async_add_executor_job(
                 save_unknown_snapshot,

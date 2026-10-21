@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
+import probatio
+import probatio.error
 import pytest
 
 from homeassistant.components.ai_task.task import GenDataTaskResult
+from homeassistant.components.camera import Image
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import entity_registry as er
@@ -66,6 +70,17 @@ def _mock_ai(result: GenDataTaskResult):
     )
 
 
+def _mock_image(
+    content: bytes = b"\xff\xd8\xff\xe0fake-jpeg\xff\xd9",
+    content_type: str = "image/jpeg",
+):
+    """Patch detection's snapshot fetch to return *content*."""
+    return patch(
+        "custom_components.person_tracker.detection.async_get_image",
+        new=AsyncMock(return_value=Image(content_type=content_type, content=content)),
+    )
+
+
 async def _fire_edge(hass: HomeAssistant, trigger: str = TRIGGER) -> None:
     """Take *trigger* off then on (a detection edge)."""
     hass.states.async_set(trigger, "off")
@@ -80,7 +95,7 @@ async def test_trigger_edge_updates_tracker(
     add_camera(hass, CAMERA, area_name="Garden")
     hass.states.async_set(TRIGGER, "off")
 
-    with _mock_ai(_ai_result(["Alice"])) as ai_task_mock:
+    with _mock_ai(_ai_result(["Alice"])) as ai_task_mock, _mock_image():
         async with setup_entry(
             hass, entry_data(cooldown_seconds=0), people=[person("Alice")]
         ):
@@ -112,7 +127,7 @@ async def test_only_off_to_on_edges_detect(
     add_camera(hass, CAMERA, area_name="Garden")
     hass.states.async_set(TRIGGER, "on")  # no prior OFF state
 
-    with _mock_ai(_ai_result([])) as ai_task_mock:
+    with _mock_ai(_ai_result([])) as ai_task_mock, _mock_image():
         async with setup_entry(
             hass, entry_data(cooldown_seconds=0), people=[person("Alice")]
         ):
@@ -140,7 +155,7 @@ async def test_cooldown_suppresses_rapid_edges(
     add_camera(hass, CAMERA, area_name="Garden")
     hass.states.async_set(TRIGGER, "off")
 
-    with _mock_ai(_ai_result(["Alice"])) as ai_task_mock:
+    with _mock_ai(_ai_result(["Alice"])) as ai_task_mock, _mock_image():
         async with setup_entry(
             hass, entry_data(cooldown_seconds=600), people=[person("Alice")]
         ):
@@ -158,7 +173,7 @@ async def test_unrecognized_person_is_ignored(
     add_camera(hass, CAMERA, area_name="Garden")
     hass.states.async_set(TRIGGER, "off")
 
-    with _mock_ai(_ai_result(["Stranger"])) as ai_task_mock:
+    with _mock_ai(_ai_result(["Stranger"])) as ai_task_mock, _mock_image():
         async with setup_entry(
             hass, entry_data(cooldown_seconds=0), people=[person("Alice")]
         ):
@@ -175,7 +190,7 @@ async def test_person_match_is_case_insensitive(
     add_camera(hass, CAMERA, area_name="Garden")
     hass.states.async_set(TRIGGER, "off")
 
-    with _mock_ai(_ai_result(["alice"])) as ai_task_mock:
+    with _mock_ai(_ai_result(["alice"])) as ai_task_mock, _mock_image():
         async with setup_entry(
             hass, entry_data(cooldown_seconds=0), people=[person("Alice")]
         ):
@@ -192,7 +207,7 @@ async def test_multiple_people_in_one_run(
     add_camera(hass, CAMERA, area_name="Garden")
     hass.states.async_set(TRIGGER, "off")
 
-    with _mock_ai(_ai_result(["Alice", "Bob"])) as ai_task_mock:
+    with _mock_ai(_ai_result(["Alice", "Bob"])) as ai_task_mock, _mock_image():
         async with setup_entry(
             hass,
             entry_data(cooldown_seconds=0),
@@ -212,7 +227,7 @@ async def test_any_trigger_of_the_camera_runs_detection(
     add_camera(hass, CAMERA, area_name="Garden")
     hass.states.async_set("binary_sensor.front_motion", "off")
 
-    with _mock_ai(_ai_result(["Alice"])) as ai_task_mock:
+    with _mock_ai(_ai_result(["Alice"])) as ai_task_mock, _mock_image():
         async with setup_entry(
             hass,
             entry_data(
@@ -277,7 +292,7 @@ async def test_unload_stops_detection(
     add_camera(hass, CAMERA, area_name="Garden")
     hass.states.async_set(TRIGGER, "off")
 
-    with _mock_ai(_ai_result(["Alice"])) as ai_task_mock:
+    with _mock_ai(_ai_result(["Alice"])) as ai_task_mock, _mock_image():
         async with setup_entry(
             hass, entry_data(cooldown_seconds=0), people=[person("Alice")]
         ):
@@ -292,21 +307,117 @@ async def test_unload_stops_detection(
 async def test_ai_error_keeps_state_unknown(
     hass: HomeAssistant, default_ai_task: None, caplog: pytest.LogCaptureFixture
 ) -> None:
-    """A failed AI run logs the error and never corrupts tracker state."""
+    """A failed AI call logs an error, changes no state, and retries nothing.
+
+    The next trigger edge after the failure runs a fresh detection (Issue #5).
+    """
     add_camera(hass, CAMERA, area_name="Garden")
     hass.states.async_set(TRIGGER, "off")
 
-    with patch(
-        "custom_components.person_tracker.detection.async_generate_data",
-        new=AsyncMock(side_effect=HomeAssistantError("AI provider exploded")),
+    with (
+        patch(
+            "custom_components.person_tracker.detection.async_generate_data",
+            new=AsyncMock(
+                side_effect=[
+                    HomeAssistantError("AI provider exploded"),
+                    _ai_result(["Alice"]),
+                ]
+            ),
+        ) as ai_task_mock,
+        _mock_image(),
     ):
         async with setup_entry(
             hass, entry_data(cooldown_seconds=0), people=[person("Alice")]
         ):
             await _fire_edge(hass)
 
+            ai_task_mock.assert_awaited_once()
             assert _tracker_state(hass, "Alice") == "unknown"
             assert any(
-                "Detection run failed for camera.front_door" in record.message
+                "Identification failed for camera.front_door" in record.message
                 for record in caplog.records
+                if record.levelno == logging.ERROR
             )
+
+            # The next edge runs a fresh, normal detection.
+            await _fire_edge(hass)
+            assert _tracker_state(hass, "Alice") == "Garden"
+
+
+async def test_snapshot_failure_skips_run_and_keeps_state(
+    hass: HomeAssistant, default_ai_task: None, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A failed snapshot logs an error, changes no state, schedules no retry.
+
+    The run is skipped entirely (no AI call), and the next trigger edge runs
+    normally with no sticky broken state (Issue #5).
+    """
+    add_camera(hass, CAMERA, area_name="Garden")
+    hass.states.async_set(TRIGGER, "off")
+
+    with _mock_ai(_ai_result(["Alice"])) as ai_task_mock:
+        async with setup_entry(
+            hass, entry_data(cooldown_seconds=0), people=[person("Alice")]
+        ):
+            # The snapshot helper fails: the run must be skipped.
+            with patch(
+                "custom_components.person_tracker.detection.async_get_image",
+                new=AsyncMock(side_effect=HomeAssistantError("camera off")),
+            ):
+                await _fire_edge(hass)
+
+            ai_task_mock.assert_not_awaited()
+            assert _tracker_state(hass, "Alice") == "unknown"
+            assert any(
+                "Snapshot failed for camera.front_door" in record.message
+                for record in caplog.records
+                if record.levelno == logging.ERROR
+            )
+
+            # The next edge runs a fresh, normal detection.
+            with _mock_image():
+                await _fire_edge(hass)
+            ai_task_mock.assert_awaited_once()
+            assert _tracker_state(hass, "Alice") == "Garden"
+
+
+async def test_probatio_error_keeps_state_unknown(
+    hass: HomeAssistant, default_ai_task: None, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A probatio validation error from the AI boundary is a failed identification.
+
+    Provider integrations validate structured output with probatio; its
+    validation errors (not wrapped in HomeAssistantError) must be handled the
+    same as any other AI call failure (Issue #5).
+    """
+    add_camera(hass, CAMERA, area_name="Garden")
+    hass.states.async_set(TRIGGER, "off")
+
+    with (
+        patch(
+            "custom_components.person_tracker.detection.async_generate_data",
+            new=AsyncMock(
+                side_effect=[
+                    probatio.error.Error("response failed schema validation"),
+                    _ai_result(["Alice"]),
+                ]
+            ),
+        ) as ai_task_mock,
+        _mock_image(),
+    ):
+        async with setup_entry(
+            hass, entry_data(cooldown_seconds=0), people=[person("Alice")]
+        ):
+            await _fire_edge(hass)
+
+            ai_task_mock.assert_awaited_once()
+            assert _tracker_state(hass, "Alice") == "unknown"
+            assert any(
+                "Identification failed for camera.front_door" in record.message
+                for record in caplog.records
+                if record.levelno == logging.ERROR
+            )
+
+            # The next edge runs a fresh, normal detection.
+            await _fire_edge(hass)
+            assert _tracker_state(hass, "Alice") == "Garden"
