@@ -70,6 +70,12 @@ AI_TASK_INSTRUCTIONS = (
     'household member is visible, respond with {"persons": []}.'
 )
 
+# Unknown snapshots (Issue #4): the folder under <config>/person_tracker/,
+# the retention of its files, and the purge cadence.
+UNKNOWN_SNAPSHOTS_DIR = "unknown_snapshots"
+UNKNOWN_SNAPSHOT_RETENTION_DAYS = 7
+UNKNOWN_SNAPSHOT_CLEANUP_HOURS = 24
+
 # Extra state attributes exposed on the tracker entities (ADR 0003).
 ATTR_LAST_SEEN = "last_seen"
 ATTR_LAST_LOCATION = "last_location"

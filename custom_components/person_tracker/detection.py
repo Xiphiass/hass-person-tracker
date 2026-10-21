@@ -10,18 +10,22 @@ and their tracker entity is nudged through a per-person dispatcher signal.
 from __future__ import annotations
 
 from collections.abc import Callable
-from datetime import datetime
+from datetime import datetime, timedelta
 from logging import getLogger
 from typing import Any, TypedDict
 
 import probatio
 from homeassistant.components.ai_task.task import async_generate_data
+from homeassistant.components.camera import async_get_image
 from homeassistant.const import STATE_OFF, STATE_ON
 from homeassistant.core import Event, HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import area_registry as ar
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.event import (
     EventStateChangedData,
     async_track_state_change_event,
+    async_track_time_interval,
 )
 from homeassistant.util import dt as dt_util
 
@@ -29,8 +33,14 @@ from .const import (
     AI_TASK_INSTRUCTIONS,
     AI_TASK_NAME,
     SIGNAL_TRACKER_UPDATE_PERSON,
+    UNKNOWN_SNAPSHOT_CLEANUP_HOURS,
+    UNKNOWN_SNAPSHOT_RETENTION_DAYS,
 )
-from .helpers import get_camera_area
+from .helpers import (
+    get_camera_area,
+    purge_unknown_snapshots,
+    save_unknown_snapshot,
+)
 from .models import Camera, Person, PersonTrackerData, person_slug
 
 _LOGGER = getLogger(__package__)
@@ -111,7 +121,7 @@ class DetectionCoordinator:
         return self._data.cooldown_seconds
 
     async def async_start(self) -> None:
-        """Watch every configured trigger."""
+        """Watch every configured trigger and purge stale unknown snapshots."""
         for camera in self._data.cameras.values():
             if not camera.triggers:
                 continue
@@ -120,6 +130,16 @@ class DetectionCoordinator:
                     self._hass, camera.triggers, self._async_on_trigger
                 )
             )
+        # Unknown snapshots live for a fixed retention window (Issue #4):
+        # purge once now (catches files from a long shutdown), then daily.
+        await self._async_purge_unknown_snapshots()
+        self._unsubscribes.append(
+            async_track_time_interval(
+                self._hass,
+                self._async_purge_unknown_snapshots,
+                timedelta(hours=UNKNOWN_SNAPSHOT_CLEANUP_HOURS),
+            )
+        )
 
     def async_stop(self) -> None:
         """Unsubscribe all triggers (entry unload)."""
@@ -184,21 +204,84 @@ class DetectionCoordinator:
             ],
         )
         hits = validate_ai_response(result.data)
-        if not hits:
-            _LOGGER.debug("No household members detected for %s.", camera.entity_id)
-            return
+        identified = False
         now = dt_util.now()
         for hit in hits:
             person = self._find_person(hit["name"])
             if person is None:
                 _LOGGER.debug("Ignoring unrecognized person %r.", hit["name"])
                 continue
+            identified = True
             person.location = area.name
             person.area_id = area.id
             person.last_seen = now
             person.last_camera = camera.entity_id
             async_dispatcher_send(
                 self._hass, f"{SIGNAL_TRACKER_UPDATE_PERSON}{person.subentry_id}"
+            )
+        if not identified:
+            # No known person was identified, so no tracker state changes.
+            # Preserve the sighting as an unknown snapshot (Issue #4).
+            await self._async_save_unknown_snapshot(camera, area)
+
+    async def _async_save_unknown_snapshot(
+        self, camera: Camera, area: ar.AreaEntry
+    ) -> None:
+        """Save a fresh snapshot of *camera* as an unknown snapshot (Issue #4).
+
+        The saved image is the record of an unidentified sighting and the raw
+        material for future self-learning. A failed fetch must not break the
+        detection run.
+        """
+        try:
+            image = await async_get_image(self._hass, camera.entity_id)
+        except HomeAssistantError:
+            _LOGGER.warning(
+                "No household member identified on %s (%s), but the snapshot "
+                "could not be fetched.",
+                camera.entity_id,
+                area.name,
+            )
+            return
+        path = await self._hass.async_add_executor_job(
+            save_unknown_snapshot,
+            self._hass,
+            camera.entity_id,
+            area.name,
+            image.content,
+            image.content_type,
+        )
+        _LOGGER.info(
+            "No household member identified on %s (%s) at %s; saved unknown "
+            "snapshot %s.",
+            camera.entity_id,
+            area.name,
+            dt_util.now().isoformat(),
+            path,
+        )
+
+    async def _async_purge_unknown_snapshots(
+        self, _now: datetime | None = None
+    ) -> None:
+        """Delete unknown snapshots past the retention window (Issue #4).
+
+        Runs on setup and once a day; the time interval listener passes the
+        UTC fire time. A failed purge must never take HA down.
+        """
+        try:
+            removed = await self._hass.async_add_executor_job(
+                purge_unknown_snapshots,
+                self._hass,
+                timedelta(days=UNKNOWN_SNAPSHOT_RETENTION_DAYS),
+            )
+        except Exception:  # noqa: BLE001 - cleanup must never take HA down
+            _LOGGER.exception("Failed to purge old unknown snapshots")
+            return
+        if removed:
+            _LOGGER.info(
+                "Purged %d unknown snapshot(s) older than %d day(s).",
+                removed,
+                UNKNOWN_SNAPSHOT_RETENTION_DAYS,
             )
 
     def _find_person(self, name: str) -> Person | None:
