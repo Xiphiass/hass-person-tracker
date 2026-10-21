@@ -60,7 +60,7 @@ AI_RESULT_STRUCTURE = probatio.Schema(
             {
                 "name": str,
                 "confidence": float,
-                probatio.Optional("thumbprint"): str,
+                probatio.Optional("thumbnail"): str,
             }
         ],
         "unknown_persons": int,
@@ -73,7 +73,7 @@ class _PersonHit(TypedDict):
 
     name: str
     confidence: float
-    thumbprint: str | None
+    thumbnail: str | None
 
 
 def validate_ai_response(data: Any) -> list[dict[str, Any]]:
@@ -102,11 +102,11 @@ def validate_ai_response(data: Any) -> list[dict[str, Any]]:
         if isinstance(entry, str):
             name = entry
             confidence: Any = 1.0
-            thumbprint: str | None = None
+            thumbnail: str | None = None
         elif isinstance(entry, dict):
             name = entry.get("name", entry.get("person"))
             confidence = entry.get("confidence", 1.0)
-            thumbprint = entry.get("thumbprint")
+            thumbnail = entry.get("thumbnail")
         else:
             continue
         if not isinstance(name, str) or not name.strip():
@@ -117,7 +117,7 @@ def validate_ai_response(data: Any) -> list[dict[str, Any]]:
             _PersonHit(
                 name=name.strip(),
                 confidence=float(confidence),
-                thumbprint=thumbprint if isinstance(thumbprint, str) else None,
+                thumbnail=thumbnail if isinstance(thumbnail, str) else None,
             )
         )
     return [{k: v for k, v in hit.items() if v is not None} for hit in hits]
@@ -299,7 +299,7 @@ class DetectionCoordinator:
             person.area_id = area.id
             person.last_seen = now
             person.last_camera = camera.entity_id
-            person.last_thumbprint = hit.get("thumbprint")
+            person.last_thumbnail = hit.get("thumbnail")
             async_dispatcher_send(
                 self._hass, f"{SIGNAL_TRACKER_UPDATE_PERSON}{person.subentry_id}"
             )

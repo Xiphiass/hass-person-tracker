@@ -206,6 +206,6 @@ class PersonTrackerEntity(TrackerEntity):
             attributes[ATTR_AREA_ID] = person.area_id
         if person.last_camera is not None:
             attributes[ATTR_LAST_CAMERA] = person.last_camera
-        if person.last_thumbprint is not None:
-            attributes["last_thumbprint"] = person.last_thumbprint
+        if person.last_thumbnail is not None:
+            attributes["last_thumbnail"] = person.last_thumbnail
         return attributes or None
