@@ -80,8 +80,7 @@ def discover_reference_images(hass: HomeAssistant, person_name: str) -> list[Pat
     Does blocking I/O; run it in the executor.
     """
     folder = get_person_images_dir(hass, person_name)
-    if not folder.is_dir():
-        return []
+    folder.mkdir(parents=True, exist_ok=True)
     return sorted(
         path
         for path in folder.iterdir()
