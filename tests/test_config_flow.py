@@ -426,6 +426,9 @@ async def test_add_person_default_ttl(
         result = await _init_person_flow(hass, entry)
         result = await _configure_person(hass, result, {const.CONF_PERSON_NAME: "Bob"})
         assert result["data"] == {const.CONF_PERSON_NAME: "Bob", const.CONF_TTL: 30}
+        # Adding Bob scheduled an entry reload; let it finish so teardown
+        # unloads a settled (not mid-setup) entry.
+        await hass.async_block_till_done()
 
 
 @pytest.mark.parametrize(
