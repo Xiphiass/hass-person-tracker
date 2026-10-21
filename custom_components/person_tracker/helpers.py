@@ -85,6 +85,7 @@ def discover_reference_images(hass: HomeAssistant, person_name: str) -> list[Pat
         if path.is_file() and path.suffix.lower() in REFERENCE_IMAGE_EXTENSIONS
     )
 
+
 def get_unknown_snapshots_dir(hass: HomeAssistant) -> Path:
     """Return the unknown-snapshots folder under the config dir (Issue #4)."""
     return Path(hass.config.path(DOMAIN, UNKNOWN_SNAPSHOTS_DIR))

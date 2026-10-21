@@ -54,9 +54,7 @@ def _mock_image(content: bytes = IMAGE_BYTES, content_type: str = "image/jpeg"):
     """Patch detection's snapshot fetch."""
     return patch(
         "custom_components.person_tracker.detection.async_get_image",
-        new=AsyncMock(
-            return_value=Image(content_type=content_type, content=content)
-        ),
+        new=AsyncMock(return_value=Image(content_type=content_type, content=content)),
     )
 
 
@@ -150,7 +148,8 @@ async def test_none_result_saves_unknown_snapshot_and_keeps_state(
             assert "last_camera" not in attrs
 
             assert any(
-                CAMERA in record.message and "Garden" in record.message
+                CAMERA in record.message
+                and "Garden" in record.message
                 and "unknown snapshot" in record.message
                 for record in caplog.records
                 if record.levelno == logging.INFO
@@ -206,9 +205,12 @@ async def test_snapshot_fetch_failure_keeps_state(
     add_camera(hass, CAMERA, area_name="Garden")
     hass.states.async_set(TRIGGER, "off")
 
-    with _mock_ai(_ai_result([])), patch(
-        "custom_components.person_tracker.detection.async_get_image",
-        new=AsyncMock(side_effect=HomeAssistantError("camera off")),
+    with (
+        _mock_ai(_ai_result([])),
+        patch(
+            "custom_components.person_tracker.detection.async_get_image",
+            new=AsyncMock(side_effect=HomeAssistantError("camera off")),
+        ),
     ):
         async with setup_entry(
             hass, entry_data(cooldown_seconds=0), people=[person("Alice")]
@@ -289,9 +291,7 @@ async def test_daily_purge_interval_is_registered(
         captured["interval"] = interval
         return lambda: None
 
-    with patch.object(
-        detection_module, "async_track_time_interval", _fake_track
-    ):
+    with patch.object(detection_module, "async_track_time_interval", _fake_track):
         async with setup_entry(
             hass, entry_data(cooldown_seconds=0), people=[person("Alice")]
         ):
