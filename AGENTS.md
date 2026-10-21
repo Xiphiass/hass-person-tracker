@@ -17,4 +17,5 @@ Single-context: `GLOSSARY.md` at repo root, ADRs under `docs/adr/`. See `docs/ag
 ## Workflow
 
 - Build every issue on a feature branch (never commit work directly to `main`).
+- Always check formatting with `black` before pushing: run `.venv/bin/black --check .` and format if necessary.
 - After the work passes local tests and formatting (black), open a PR against `main` from the feature branch.
