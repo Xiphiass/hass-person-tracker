@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from custom_components.person_tracker.detection import validate_ai_response
+from custom_components.person_tracker.detection import (
+    unknown_person_count,
+    validate_ai_response,
+)
 
 
 def test_full_shape() -> None:
@@ -93,3 +96,14 @@ def test_response_shape_matches_what_detection_expects() -> None:
     data: Any = {"persons": [{"name": "Alice", "confidence": 0.9}]}
     for hit in validate_ai_response(data):
         assert set(hit) == {"name", "confidence"}
+
+
+def test_unknown_person_count() -> None:
+    """A valid count is returned; anything else means "no usable count"."""
+    assert unknown_person_count({"persons": [], "unknown_persons": 0}) == 0
+    assert unknown_person_count({"persons": [], "unknown_persons": 2}) == 2
+    assert unknown_person_count({"persons": []}) is None
+    assert unknown_person_count({"unknown_persons": -1}) is None
+    assert unknown_person_count({"unknown_persons": True}) is None
+    assert unknown_person_count({"unknown_persons": "1"}) is None
+    assert unknown_person_count(["Alice"]) is None

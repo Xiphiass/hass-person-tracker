@@ -67,8 +67,16 @@ AI_TASK_INSTRUCTIONS = (
     'camera snapshot. Respond in JSON: an object with a "persons" list '
     'containing {"name": string, "confidence": number} objects, one per '
     "visible household member, using their exact configured names. If no "
-    'household member is visible, respond with {"persons": []}.'
+    'household member is visible, use an empty "persons" list. Also include '
+    '"unknown_persons": the number of visible people who are not listed '
+    "household members (0 if there are none, or if no one is visible at all)."
 )
+
+# Unknown snapshots (Issue #4): the folder under <config>/person_tracker/,
+# the retention of its files, and the purge cadence.
+UNKNOWN_SNAPSHOTS_DIR = "unknown_snapshots"
+UNKNOWN_SNAPSHOT_RETENTION_DAYS = 7
+UNKNOWN_SNAPSHOT_CLEANUP_HOURS = 24
 
 # Extra state attributes exposed on the tracker entities (ADR 0003).
 ATTR_LAST_SEEN = "last_seen"
