@@ -65,12 +65,22 @@ AI_TASK_NAME = "identify_persons"
 AI_TASK_INSTRUCTIONS = (
     "Identify which of the listed household members are visible in the "
     'camera snapshot. Respond in JSON: an object with a "persons" list '
-    'containing {"name": string, "confidence": number} objects, one per '
-    "visible household member, using their exact configured names. If no "
-    'household member is visible, use an empty "persons" list. Also include '
-    '"unknown_persons": the number of visible people who are not listed '
-    "household members (0 if there are none, or if no one is visible at all)."
+    'containing {"name": string, "confidence": number, "bbox": [x1, y1, '
+    "x2, y2]} objects, one per visible household member, using their exact "
+    'configured names. "bbox" is the pixel bounding box tightly around '
+    "that person: top-left x, top-left y, bottom-right x, bottom-right y. "
+    'If no household member is visible, use an empty "persons" list. '
+    'Also include "unknown_persons": the number of visible people who '
+    "are not listed household members (0 if there are none, or if no one "
+    "is visible at all)."
 )
+
+# Per-person last-seen thumbnails (Issue #3): the folder under
+# <config>/person_tracker/ holding one cropped image per person (the
+# person's last detection, cropped tight around them), and the fraction
+# of the box size added around each edge of the crop.
+THUMBNAILS_DIR = "thumbnails"
+THUMBNAIL_PADDING = 0.05
 
 # Unknown snapshots (Issue #4): the folder under <config>/person_tracker/,
 # the retention of its files, and the purge cadence.
@@ -83,3 +93,6 @@ ATTR_LAST_SEEN = "last_seen"
 ATTR_LAST_LOCATION = "last_location"
 ATTR_AREA_ID = "area_id"
 ATTR_LAST_CAMERA = "last_camera"
+# The saved image of the person's last detection, as a path relative to
+# the HA config dir (Issue #3).
+ATTR_LAST_THUMBNAIL = "last_thumbnail"

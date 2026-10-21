@@ -117,6 +117,41 @@ def test_ai_result_structure_uses_task_name_and_persons_array() -> None:
     assert "persons" in spec
     assert spec["persons"][0]["name"] is str
     assert spec["persons"][0]["confidence"] is float
+    # An optional tight bounding box around each person (Issue #3).
+    assert spec["persons"][0]["bbox"] == [float, float, float, float]
+    assert spec["unknown_persons"] is int
+
+
+def test_valid_bbox_carried_through() -> None:
+    """A well-formed bbox is kept, with ints coerced to floats."""
+    data = {
+        "persons": [
+            {"name": "Alice", "confidence": 0.9, "bbox": [10, 10, 40, 50]},
+            {"name": "Bob", "confidence": 0.7, "bbox": [0.1, 0.1, 0.5, 0.5]},
+        ],
+        "unknown_persons": 0,
+    }
+    assert validate_ai_response(data) == [
+        {"name": "Alice", "confidence": 0.9, "bbox": [10.0, 10.0, 40.0, 50.0]},
+        {"name": "Bob", "confidence": 0.7, "bbox": [0.1, 0.1, 0.5, 0.5]},
+    ]
+
+
+def test_malformed_bbox_dropped_but_hit_kept() -> None:
+    """A bbox we can't crop from must not drop the identification itself."""
+    for bad in (
+        [1.0, 2.0, 3.0],  # too short
+        [1.0, "x", 3.0, 4.0],  # not all numbers
+        "1, 2, 3, 4",  # a string
+        [[1.0, 2.0, 3.0, 4.0]],  # nested
+        [True, 1.0, 2.0, 3.0],  # a boolean is not a coordinate
+        None,
+    ):
+        data = {
+            "persons": [{"name": "Alice", "confidence": 0.9, "bbox": bad}],
+            "unknown_persons": 0,
+        }
+        assert validate_ai_response(data) == [{"name": "Alice", "confidence": 0.9}], bad
 
 
 def test_unknown_person_count() -> None:

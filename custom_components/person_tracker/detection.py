@@ -47,6 +47,7 @@ from .const import (
 from .helpers import (
     get_camera_area,
     purge_unknown_snapshots,
+    save_person_thumbnail,
     save_unknown_snapshot,
 )
 from .models import Camera, Person, PersonTrackerData, person_slug
@@ -60,7 +61,7 @@ AI_RESULT_STRUCTURE = probatio.Schema(
             {
                 "name": str,
                 "confidence": float,
-                probatio.Optional("thumbnail"): str,
+                probatio.Optional("bbox"): [float, float, float, float],
             }
         ],
         "unknown_persons": int,
@@ -73,14 +74,31 @@ class _PersonHit(TypedDict):
 
     name: str
     confidence: float
-    thumbnail: str | None
+    bbox: list[float] | None
+
+
+def _person_bbox(entry: dict[str, Any]) -> list[float] | None:
+    """A usable ``[x1, y1, x2, y2]`` pixel box from an entry, or None."""
+    raw = entry.get("bbox")
+    if (
+        isinstance(raw, (list, tuple))
+        and len(raw) == 4
+        and all(
+            isinstance(value, (int, float)) and not isinstance(value, bool)
+            for value in raw
+        )
+    ):
+        return [float(value) for value in raw]
+    return None
 
 
 def validate_ai_response(data: Any) -> list[dict[str, Any]]:
     """Normalize the AI task's response into person hits.
 
-    The expected shape is ``{"persons": [{"name": str, "confidence": float}]}``;
-    a bare list of names (or name dicts) is also accepted.
+    The expected shape is
+    ``{"persons": [{"name": str, "confidence": float, "bbox": [x1, y1, x2,
+    y2]}]}``; a bare list of names (or name dicts) is also accepted. A
+    malformed ``bbox`` is dropped, keeping the hit.
 
     Raises ValueError when *data* is not the documented persons envelope —
     a malformed response is a failed identification (Issue #5), never an
@@ -102,11 +120,11 @@ def validate_ai_response(data: Any) -> list[dict[str, Any]]:
         if isinstance(entry, str):
             name = entry
             confidence: Any = 1.0
-            thumbnail: str | None = None
+            bbox: list[float] | None = None
         elif isinstance(entry, dict):
             name = entry.get("name", entry.get("person"))
             confidence = entry.get("confidence", 1.0)
-            thumbnail = entry.get("thumbnail")
+            bbox = _person_bbox(entry)
         else:
             continue
         if not isinstance(name, str) or not name.strip():
@@ -117,7 +135,7 @@ def validate_ai_response(data: Any) -> list[dict[str, Any]]:
             _PersonHit(
                 name=name.strip(),
                 confidence=float(confidence),
-                thumbnail=thumbnail if isinstance(thumbnail, str) else None,
+                bbox=bbox,
             )
         )
     return [{k: v for k, v in hit.items() if v is not None} for hit in hits]
@@ -299,7 +317,9 @@ class DetectionCoordinator:
             person.area_id = area.id
             person.last_seen = now
             person.last_camera = camera.entity_id
-            person.last_thumbnail = hit.get("thumbnail")
+            person.last_thumbnail = await self._async_save_person_thumbnail(
+                person, image, hit.get("bbox")
+            )
             async_dispatcher_send(
                 self._hass, f"{SIGNAL_TRACKER_UPDATE_PERSON}{person.subentry_id}"
             )
@@ -321,6 +341,35 @@ class DetectionCoordinator:
         caller skips the run without changing state (Issue #5).
         """
         return await async_get_image(self._hass, camera.entity_id)
+
+    async def _async_save_person_thumbnail(
+        self, person: Person, image: Image, bbox: list[float] | None
+    ) -> str | None:
+        """Save *image* as *person*'s last-seen thumbnail (Issue #3).
+
+        The frame is cropped tight around *bbox* when the AI gave one.
+        Returns the saved path relative to the config dir, or None when the
+        write failed — a failed write must not break the detection run
+        (Issue #5).
+        """
+        try:
+            path = await self._hass.async_add_executor_job(
+                save_person_thumbnail,
+                self._hass,
+                person.name,
+                image.content,
+                image.content_type,
+                bbox,
+            )
+        except (OSError, ValueError) as err:
+            _LOGGER.warning(
+                "Could not save %s's last-seen thumbnail: %s", person.name, err
+            )
+            return None
+        try:
+            return str(path.relative_to(self._hass.config.config_dir))
+        except ValueError:
+            return str(path)
 
     async def _async_save_unknown_snapshot(
         self, camera: Camera, area: ar.AreaEntry, image: Image
