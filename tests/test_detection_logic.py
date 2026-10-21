@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import pytest
 from typing import Any
 
+from custom_components.person_tracker.const import AI_TASK_NAME
 from custom_components.person_tracker.detection import (
+    AI_RESULT_STRUCTURE,
     unknown_person_count,
     validate_ai_response,
 )
@@ -79,16 +82,24 @@ def test_bad_confidence_defaults_to_one() -> None:
         ], confidence
 
 
-def test_unparseable_top_level_yields_empty() -> None:
-    """Anything that is not a dict or list yields no hits, never an error."""
-    for data in (None, 3.14, "Alice", {"foo": 1}, {"persons": "Alice"}, {}):
-        assert validate_ai_response(data) == [], data
+def test_malformed_top_level_raises_value_error() -> None:
+    """A malformed response is a failure, never an empty (false-negative) run.
+
+    Anything that is not the documented persons envelope — no 'persons' key,
+    a bare list under the wrong key, a non-container top level — raises
+    ValueError so the detection run is skipped without touching state
+    (Issue #5).
+    """
+    for data in (None, 3.14, "Alice", {"foo": 1}, {}):
+        with pytest.raises(ValueError):
+            validate_ai_response(data)
 
 
-def test_persons_not_a_list() -> None:
-    """A non-list 'persons' value yields no hits."""
-    assert validate_ai_response({"persons": {"name": "Alice"}}) == []
-    assert validate_ai_response({"persons": 42}) == []
+def test_persons_not_a_list_raises_value_error() -> None:
+    """A non-list 'persons' value is a failed identification, not no hits."""
+    for data in ({"persons": {"name": "Alice"}}, {"persons": 42}, {"people": 42}):
+        with pytest.raises(ValueError):
+            validate_ai_response(data)
 
 
 def test_response_shape_matches_what_detection_expects() -> None:
@@ -96,6 +107,16 @@ def test_response_shape_matches_what_detection_expects() -> None:
     data: Any = {"persons": [{"name": "Alice", "confidence": 0.9}]}
     for hit in validate_ai_response(data):
         assert set(hit) == {"name", "confidence"}
+
+
+def test_ai_result_structure_uses_task_name_and_persons_array() -> None:
+    """The task's result schema is the contract the validator enforces."""
+    assert AI_TASK_NAME == "identify_persons"
+    # Structure access: probatio.Schema stores its definition in ``.schema``
+    spec = AI_RESULT_STRUCTURE.schema
+    assert "persons" in spec
+    assert spec["persons"][0]["name"] is str
+    assert spec["persons"][0]["confidence"] is float
 
 
 def test_unknown_person_count() -> None:

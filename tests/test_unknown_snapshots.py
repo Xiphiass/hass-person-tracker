@@ -307,18 +307,72 @@ async def test_snapshot_write_failure_is_a_warning(
             )
 
 
+async def test_malformed_response_saves_nothing_and_keeps_state(
+    hass: HomeAssistant,
+    default_ai_task: None,
+    unknown_snapshots_dir: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A malformed AI response fails the run: no snapshot, no state change.
+
+    A malformed response is neither 'no one visible' (a false negative) nor a
+    sighting to save (a false positive) — the run is skipped, and the next
+    trigger edge runs a fresh detection (Issue #5).
+    """
+    add_camera(hass, CAMERA, area_name="Garden")
+    hass.states.async_set(TRIGGER, "off")
+
+    with (
+        _mock_image(),
+        patch(
+            "custom_components.person_tracker.detection.async_generate_data",
+            new=AsyncMock(
+                side_effect=[
+                    GenDataTaskResult(
+                        conversation_id="test-conversation",
+                        data="I see a person in the garden.",
+                    ),
+                    _ai_result(["Alice"]),
+                ]
+            ),
+        ) as ai_task_mock,
+    ):
+        async with setup_entry(
+            hass, entry_data(cooldown_seconds=0), people=[person("Alice")]
+        ):
+            await _fire_edge(hass)
+
+            ai_task_mock.assert_awaited_once()
+            assert _saved_snapshots(unknown_snapshots_dir) == []
+            assert _tracker_state(hass, "Alice") == "unknown"
+            assert any(
+                "Malformed AI response for camera.front_door" in record.message
+                for record in caplog.records
+                if record.levelno == logging.ERROR
+            )
+
+            # The next edge runs a fresh, normal detection.
+            await _fire_edge(hass)
+            assert _tracker_state(hass, "Alice") == "Garden"
+            assert _saved_snapshots(unknown_snapshots_dir) == []
+
+
 async def test_snapshot_fetch_failure_keeps_state(
     hass: HomeAssistant,
     default_ai_task: None,
     unknown_snapshots_dir: Path,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """An unfetchable snapshot is a warning, not a failed run."""
+    """An unfetchable snapshot fails the run: error, no AI call, no state change.
+
+    The identification is skipped entirely — a failed snapshot must not
+    change tracker state or schedule a retry (Issue #5).
+    """
     add_camera(hass, CAMERA, area_name="Garden")
     hass.states.async_set(TRIGGER, "off")
 
     with (
-        _mock_ai(_ai_result([])),
+        _mock_ai(_ai_result([])) as ai_task_mock,
         patch(
             "custom_components.person_tracker.detection.async_get_image",
             new=AsyncMock(side_effect=HomeAssistantError("camera off")),
@@ -329,12 +383,13 @@ async def test_snapshot_fetch_failure_keeps_state(
         ):
             await _fire_edge(hass)
 
+            ai_task_mock.assert_not_awaited()
             assert _saved_snapshots(unknown_snapshots_dir) == []
             assert _tracker_state(hass, "Alice") == "unknown"
             assert any(
-                "could not be fetched" in record.message
+                "Snapshot failed" in record.message
                 for record in caplog.records
-                if record.levelno == logging.WARNING
+                if record.levelno == logging.ERROR
             )
 
 
