@@ -55,7 +55,16 @@ _LOGGER = getLogger(__package__)
 
 # Expected shape of the AI task response (Issue #3).
 AI_RESULT_STRUCTURE = probatio.Schema(
-    {"persons": [{"name": str, "confidence": float}], "unknown_persons": int}
+    {
+        "persons": [
+            {
+                "name": str,
+                "confidence": float,
+                probatio.Optional("thumbprint"): str,
+            }
+        ],
+        "unknown_persons": int,
+    }
 )
 
 
@@ -64,9 +73,10 @@ class _PersonHit(TypedDict):
 
     name: str
     confidence: float
+    thumbprint: str | None
 
 
-def validate_ai_response(data: Any) -> list[_PersonHit]:
+def validate_ai_response(data: Any) -> list[dict[str, Any]]:
     """Normalize the AI task's response into person hits.
 
     The expected shape is ``{"persons": [{"name": str, "confidence": float}]}``;
@@ -92,17 +102,28 @@ def validate_ai_response(data: Any) -> list[_PersonHit]:
         if isinstance(entry, str):
             name = entry
             confidence: Any = 1.0
+            thumbprint: str | None = None
         elif isinstance(entry, dict):
             name = entry.get("name", entry.get("person"))
             confidence = entry.get("confidence", 1.0)
+            thumbprint = entry.get("thumbprint")
         else:
             continue
         if not isinstance(name, str) or not name.strip():
             continue
         if not isinstance(confidence, (int, float)) or isinstance(confidence, bool):
             confidence = 1.0
-        hits.append(_PersonHit(name=name.strip(), confidence=float(confidence)))
-    return hits
+        hits.append(
+            _PersonHit(
+                name=name.strip(),
+                confidence=float(confidence),
+                thumbprint=thumbprint if isinstance(thumbprint, str) else None,
+            )
+        )
+    return [
+        {k: v for k, v in hit.items() if v is not None}
+        for hit in hits
+    ]
 
 
 def unknown_person_count(data: Any) -> int | None:
@@ -281,6 +302,7 @@ class DetectionCoordinator:
             person.area_id = area.id
             person.last_seen = now
             person.last_camera = camera.entity_id
+            person.last_thumbprint = hit.get("thumbprint")
             async_dispatcher_send(
                 self._hass, f"{SIGNAL_TRACKER_UPDATE_PERSON}{person.subentry_id}"
             )

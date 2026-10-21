@@ -42,6 +42,7 @@ class Person:
     area_id: str | None = None
     last_seen: datetime | None = None
     last_camera: str | None = None
+    last_thumbprint: str | None = None
 
     @property
     def ttl(self) -> timedelta:
