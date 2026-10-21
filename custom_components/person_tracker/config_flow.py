@@ -37,13 +37,16 @@ from .const import (
     CONF_AUTHORITATIVE_TRACKER,
     CONF_CAMERA,
     CONF_CAMERAS,
+    CONF_COOLDOWN,
     CONF_PERSON_NAME,
     CONF_REMOVE_CAMERAS,
     CONF_TTL,
     CONF_TRIGGERS,
+    DEFAULT_COOLDOWN_SECONDS,
     DEFAULT_TTL_MINUTES,
     DOMAIN,
     ERR_NO_CAMERAS,
+    MAX_COOLDOWN_SECONDS,
     MAX_TTL_MINUTES,
     SUBENTRY_PERSON,
 )
@@ -94,6 +97,15 @@ _AI_TASK_SCHEMA = probatio.Schema(
         )
     }
 )
+_COOLDOWN_SCHEMA = probatio.Schema(
+    {
+        probatio.Required(CONF_COOLDOWN): NumberSelector(
+            NumberSelectorConfig(
+                min=1, max=MAX_COOLDOWN_SECONDS, mode=NumberSelectorMode.BOX
+            )
+        )
+    }
+)
 
 
 def _configured_cameras_schema(key: str, cameras: list[str]) -> probatio.Schema:
@@ -118,6 +130,7 @@ class PersonTrackerConfigFlow(ConfigFlow, domain=DOMAIN):
         """Initialize flow and per-flow scratch state."""
         super().__init__()
         self._cameras: list[dict[str, Any]] = []
+        self._ai_task_entity: str | None = None
         self._edit_camera: str | None = None
 
     @classmethod
@@ -197,22 +210,17 @@ class PersonTrackerConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_ai_task(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Select the AI task entity, then finish."""
+        """Select the AI task entity."""
         errors: dict[str, str] = {}
         if user_input is not None:
             ai_task_entity = user_input[CONF_AI_TASK_ENTITY]
             if error := ai_task_error(self.hass, ai_task_entity):
                 errors[CONF_AI_TASK_ENTITY] = error
-            elif self._reconfiguring:
-                return self._save(**{CONF_AI_TASK_ENTITY: ai_task_entity})
             else:
-                return self.async_create_entry(
-                    title="Person Tracker",
-                    data={
-                        CONF_CAMERAS: self._cameras,
-                        CONF_AI_TASK_ENTITY: ai_task_entity,
-                    },
-                )
+                self._ai_task_entity = ai_task_entity
+                if self._reconfiguring:
+                    return self._save(**{CONF_AI_TASK_ENTITY: ai_task_entity})
+                return await self.async_step_cooldown()
         elif self._reconfiguring:
             user_input = dict(self._get_reconfigure_entry().data)
         else:
@@ -225,6 +233,39 @@ class PersonTrackerConfigFlow(ConfigFlow, domain=DOMAIN):
             errors=errors,
         )
 
+    async def async_step_cooldown(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Set the detection cooldown (global setting, Issue #3)."""
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            cooldown = int(user_input[CONF_COOLDOWN])
+            if self._reconfiguring:
+                return self._save(**{CONF_COOLDOWN: cooldown})
+            return self.async_create_entry(
+                title="Person Tracker",
+                data={
+                    CONF_CAMERAS: self._cameras,
+                    CONF_AI_TASK_ENTITY: self._ai_task_entity,
+                    CONF_COOLDOWN: cooldown,
+                },
+            )
+        if self._reconfiguring:
+            user_input = {
+                CONF_COOLDOWN: self._get_reconfigure_entry().data.get(
+                    CONF_COOLDOWN, DEFAULT_COOLDOWN_SECONDS
+                )
+            }
+        else:
+            user_input = {CONF_COOLDOWN: DEFAULT_COOLDOWN_SECONDS}
+        return self.async_show_form(
+            step_id="cooldown",
+            data_schema=self.add_suggested_values_to_schema(
+                _COOLDOWN_SCHEMA, user_input
+            ),
+            errors=errors,
+        )
+
     async def async_step_reconfigure(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
@@ -232,7 +273,13 @@ class PersonTrackerConfigFlow(ConfigFlow, domain=DOMAIN):
         self._cameras = list(self._get_reconfigure_entry().data[CONF_CAMERAS])
         return self.async_show_menu(
             step_id="reconfigure",
-            menu_options=["camera_add", "camera_edit", "camera_remove", "ai_task"],
+            menu_options=[
+                "camera_add",
+                "camera_edit",
+                "camera_remove",
+                "ai_task",
+                "cooldown",
+            ],
         )
 
     async def async_step_camera_edit(

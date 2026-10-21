@@ -11,6 +11,7 @@ PLATFORMS = [Platform.DEVICE_TRACKER]
 # Config entry data keys (global settings).
 CONF_CAMERAS = "cameras"
 CONF_AI_TASK_ENTITY = "ai_task_entity"
+CONF_COOLDOWN = "cooldown"
 
 # Each Person is a config subentry of this type.
 SUBENTRY_PERSON = "person"
@@ -30,6 +31,8 @@ CONF_REMOVE_CAMERAS = "remove_cameras"
 
 DEFAULT_TTL_MINUTES = 30
 MAX_TTL_MINUTES = 1440
+DEFAULT_COOLDOWN_SECONDS = 30
+MAX_COOLDOWN_SECONDS = 300
 
 # Reference images (ADR 0005): user-placed files under
 # <config>/person_tracker/people/<person>/<file>.
@@ -52,6 +55,20 @@ ERR_INVALID_AI_TASK_ENTITY = "invalid_ai_task_entity"
 
 ABORT_SINGLE_INSTANCE = "single_instance_allowed"
 ABORT_NO_AI_TASK_ENTITY = "no_ai_task_entity"
+
+# Per-person dispatcher signal prefix, followed by the person's subentry ID.
+# Sent when a detection run updates that person (Issue #3).
+SIGNAL_TRACKER_UPDATE_PERSON = f"{DOMAIN}_tracker_update_person"
+
+# AI task identification run (Issue #3): fixed task name and prompt.
+AI_TASK_NAME = "identify_persons"
+AI_TASK_INSTRUCTIONS = (
+    "Identify which of the listed household members are visible in the "
+    'camera snapshot. Respond in JSON: an object with a "persons" list '
+    'containing {"name": string, "confidence": number} objects, one per '
+    "visible household member, using their exact configured names. If no "
+    'household member is visible, respond with {"persons": []}.'
+)
 
 # Extra state attributes exposed on the tracker entities (ADR 0003).
 ATTR_LAST_SEEN = "last_seen"

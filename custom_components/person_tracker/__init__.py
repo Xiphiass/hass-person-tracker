@@ -27,14 +27,17 @@ from .const import (
     CONF_AUTHORITATIVE_TRACKER,
     CONF_CAMERA,
     CONF_CAMERAS,
+    CONF_COOLDOWN,
     CONF_PERSON_NAME,
     CONF_TTL,
     CONF_TRIGGERS,
+    DEFAULT_COOLDOWN_SECONDS,
     DEFAULT_TTL_MINUTES,
     DOMAIN,
     PLATFORMS,
     SUBENTRY_PERSON,
 )
+from .detection import DetectionCoordinator
 from .helpers import (
     discover_reference_images,
     get_person_images_dir,
@@ -57,7 +60,12 @@ async def async_setup_entry(
     hass: HomeAssistant, entry: PersonTrackerConfigEntry
 ) -> bool:
     """Set up the entry and its person subentries."""
-    entry.runtime_data = await _async_build_entry_data(hass, entry)
+    entry.runtime_data = data = await _async_build_entry_data(hass, entry)
+    # The detection loop watches the configured triggers (Issue #3).
+    coordinator = DetectionCoordinator(hass, data)
+    data.coordinator = coordinator
+    await coordinator.async_start()
+    entry.async_on_unload(coordinator.async_stop)
     # Reconfiguring the entry or adding/editing/removing a person updates the
     # entry; reload to apply it.
     entry.async_on_unload(entry.add_update_listener(_async_reload_entry))
@@ -159,4 +167,5 @@ async def _async_build_entry_data(
         ai_task_entity_id=ai_task_entity_id,
         people=people,
         cameras=cameras,
+        cooldown_seconds=int(entry.data.get(CONF_COOLDOWN, DEFAULT_COOLDOWN_SECONDS)),
     )
