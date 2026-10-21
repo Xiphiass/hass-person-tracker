@@ -421,3 +421,71 @@ async def test_probatio_error_keeps_state_unknown(
             # The next edge runs a fresh, normal detection.
             await _fire_edge(hass)
             assert _tracker_state(hass, "Alice") == "Garden"
+
+
+@pytest.mark.parametrize(
+    ("ai_side_effect", "image_side_effect"),
+    [
+        pytest.param(
+            [HomeAssistantError("AI provider exploded"), _ai_result(["Alice"])],
+            None,
+            id="ai_error",
+        ),
+        pytest.param(
+            [
+                GenDataTaskResult(conversation_id="test", data={"nope": 1}),
+                _ai_result(["Alice"]),
+            ],
+            None,
+            id="malformed_response",
+        ),
+        pytest.param(
+            [RuntimeError("unexpected"), _ai_result(["Alice"])],
+            None,
+            id="unexpected_error",
+        ),
+        pytest.param(
+            [_ai_result(["Alice"])],
+            [
+                HomeAssistantError("camera off"),
+                Image(content_type="image/jpeg", content=b"\xff\xd8\xff\xd9"),
+            ],
+            id="snapshot_error",
+        ),
+    ],
+)
+async def test_failed_run_does_not_consume_cooldown(
+    hass: HomeAssistant,
+    default_ai_task: None,
+    ai_side_effect: list[Any],
+    image_side_effect: list[Any] | None,
+) -> None:
+    """A failed run releases the cooldown so the next edge detects (Issue #5)."""
+    add_camera(hass, CAMERA, area_name="Garden")
+    hass.states.async_set(TRIGGER, "off")
+
+    image_mock = (
+        AsyncMock(side_effect=image_side_effect)
+        if image_side_effect is not None
+        else AsyncMock(
+            return_value=Image(content_type="image/jpeg", content=b"\xff\xd8\xff\xd9")
+        )
+    )
+    with (
+        patch(
+            "custom_components.person_tracker.detection.async_generate_data",
+            new=AsyncMock(side_effect=ai_side_effect),
+        ),
+        patch(
+            "custom_components.person_tracker.detection.async_get_image",
+            new=image_mock,
+        ),
+    ):
+        async with setup_entry(
+            hass, entry_data(cooldown_seconds=600), people=[person("Alice")]
+        ):
+            await _fire_edge(hass)  # fails
+            assert _tracker_state(hass, "Alice") == "unknown"
+
+            await _fire_edge(hass)  # inside the cooldown, but runs anyway
+            assert _tracker_state(hass, "Alice") == "Garden"

@@ -200,18 +200,30 @@ class DetectionCoordinator:
         ):
             _LOGGER.debug("Skipping detection run for %s (cooldown).", camera.entity_id)
             return
+        # Claim the cooldown slot before the (slow) run so edges arriving
+        # mid-run are suppressed.
         self._last_run[camera.entity_id] = now
         try:
-            await self._async_detect(camera)
+            succeeded = await self._async_detect(camera)
         except Exception:
             _LOGGER.exception("Detection run failed for %s", camera.entity_id)
+            succeeded = False
+        if not succeeded:
+            # A failed run must not hold the cooldown: the next edge runs a
+            # fresh detection (Issue #5).
+            if last is None:
+                self._last_run.pop(camera.entity_id, None)
+            else:
+                self._last_run[camera.entity_id] = last
 
-    async def _async_detect(self, camera: Camera) -> None:
+    async def _async_detect(self, camera: Camera) -> bool:
         """Run the AI task on a snapshot of *camera* and apply its result.
 
         Failure policy (Issue #5): a failed snapshot or a failed AI call
         logs an error and aborts the run — no tracker state changes,
         nothing is retried, and the next trigger edge runs fresh.
+
+        Returns False when the run failed, True otherwise.
         """
         # The area is looked up at trigger time so post-setup area changes
         # apply without a reload (ADR 0003).
@@ -221,14 +233,14 @@ class DetectionCoordinator:
                 "Camera %s is not in an HA area; skipping the run.",
                 camera.entity_id,
             )
-            return
+            return True
         # Grab the frame to keep before the (slow) AI call, so a saved unknown
         # snapshot shows the scene at trigger time, not seconds later.
         try:
             image = await self._async_fetch_snapshot(camera)
         except HomeAssistantError as err:
             _LOGGER.error("Snapshot failed for %s: %s", camera.entity_id, err)
-            return
+            return False
         result: GenDataTaskResult
         try:
             result = await async_generate_data(
@@ -246,7 +258,7 @@ class DetectionCoordinator:
         # error, depending on the AI Task integration.
         except (HomeAssistantError, probatio.error.Error) as err:
             _LOGGER.error("Identification failed for %s: %s", camera.entity_id, err)
-            return
+            return False
         try:
             hits = validate_ai_response(result.data)
         except ValueError as err:
@@ -256,7 +268,7 @@ class DetectionCoordinator:
                 err,
                 result.data,
             )
-            return
+            return False
         identified = False
         now = dt_util.now()
         for hit in hits:
@@ -273,14 +285,15 @@ class DetectionCoordinator:
                 self._hass, f"{SIGNAL_TRACKER_UPDATE_PERSON}{person.subentry_id}"
             )
         if identified:
-            return
+            return True
         # No known person was identified, so no tracker state changes.
         if not hits and unknown_person_count(result.data) == 0:
             # The AI saw no one at all: a false trigger, not a sighting.
             _LOGGER.debug("No one visible on %s; nothing to save.", camera.entity_id)
-            return
+            return True
         # Preserve the sighting as an unknown snapshot (Issue #4).
         await self._async_save_unknown_snapshot(camera, area, image)
+        return True
 
     async def _async_fetch_snapshot(self, camera: Camera) -> Image:
         """Fetch a snapshot of *camera*.
