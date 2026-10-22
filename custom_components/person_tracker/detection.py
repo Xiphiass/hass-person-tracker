@@ -61,8 +61,11 @@ AI_RESULT_STRUCTURE = probatio.Schema(
             {
                 "name": str,
                 "confidence": float,
-                probatio.Optional("bbox"): probatio.ExactSequence(
-                    [float, float, float, float]
+                # A list with a length check, not a tuple or ExactSequence:
+                # this renders as a plain number array with
+                # minItems/maxItems, which every AI task provider accepts.
+                probatio.Optional("bbox"): probatio.All(
+                    [float], probatio.Length(min=4, max=4)
                 ),
             }
         ],

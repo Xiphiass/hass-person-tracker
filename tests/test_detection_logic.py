@@ -119,8 +119,26 @@ def test_ai_result_structure_uses_task_name_and_persons_array() -> None:
     assert spec["persons"][0]["name"] is str
     assert spec["persons"][0]["confidence"] is float
     # An optional tight bounding box around each person (Issue #3).
-    assert isinstance(spec["persons"][0]["bbox"], probatio.ExactSequence)
+    assert isinstance(spec["persons"][0]["bbox"], probatio.All)
     assert spec["unknown_persons"] is int
+
+
+def test_bbox_schema_renders_portably_for_every_provider() -> None:
+    """The bbox is a typed number array of length 4 in every OpenAPI version.
+
+    Provider integrations convert the structure themselves: Gemini and
+    local_openai use OpenAPI 3.0, OpenAI uses 3.1. Each needs ``items`` to be
+    a plain typed schema (no ``anyOf``, never missing).
+    """
+    for version in ("3.0", "3.1.0"):
+        rendered = probatio.to_openapi(AI_RESULT_STRUCTURE, openapi_version=version)
+        bbox = rendered["properties"]["persons"]["items"]["properties"]["bbox"]
+        assert bbox == {
+            "type": "array",
+            "items": {"type": "number"},
+            "minItems": 4,
+            "maxItems": 4,
+        }, version
 
 
 def test_valid_bbox_carried_through() -> None:
