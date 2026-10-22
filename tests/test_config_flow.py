@@ -375,12 +375,15 @@ async def _configure_person(hass: HomeAssistant, result: dict, data: dict) -> di
     return await hass.config_entries.subentries.async_configure(result["flow_id"], data)
 
 
-def _tracker_entity_ids(hass: HomeAssistant, entry: MockConfigEntry) -> list[str]:
+def _tracker_entity_ids(
+    hass: HomeAssistant, entry: MockConfigEntry, domain: str = "device_tracker"
+) -> list[str]:
     return [
         entity.entity_id
         for entity in er.async_entries_for_config_entry(
             er.async_get(hass), entry.entry_id
         )
+        if entity.domain == domain
     ]
 
 
@@ -496,6 +499,7 @@ async def test_reconfigure_person_rename_keeps_entity(
     async with setup_entry(hass) as entry:
         (alice_id,) = entry.subentries
         (entity_id,) = _tracker_entity_ids(hass, entry)
+        (image_entity_id,) = _tracker_entity_ids(hass, entry, "image")
 
         result = await entry.start_subentry_reconfigure_flow(hass, alice_id)
         assert result["step_id"] == "reconfigure"
@@ -515,6 +519,7 @@ async def test_reconfigure_person_rename_keeps_entity(
         assert subentry.data == {const.CONF_PERSON_NAME: "Alicia", const.CONF_TTL: 60}
         assert entry.runtime_data.people[alice_id].name == "Alicia"
         assert _tracker_entity_ids(hass, entry) == [entity_id]
+        assert _tracker_entity_ids(hass, entry, "image") == [image_entity_id]
         device = dr.async_get(hass).async_get_device_by_identifier(
             (DOMAIN, alice_id), entry.entry_id
         )
@@ -543,17 +548,19 @@ async def test_reconfigure_person_keeps_own_name(
 async def test_remove_person_removes_device_and_entity(
     hass: HomeAssistant, default_ai_task: None, cameras: None
 ) -> None:
-    """Deleting a person subentry removes their device and tracker entity."""
+    """Deleting a person subentry removes their device and entities."""
     async with setup_entry(hass, people=[person("Alice"), person("Bob")]) as entry:
         bob_id = next(
             s.subentry_id for s in entry.subentries.values() if s.title == "Bob"
         )
         assert len(_tracker_entity_ids(hass, entry)) == 2
+        assert len(_tracker_entity_ids(hass, entry, "image")) == 2
 
         assert hass.config_entries.async_remove_subentry(entry, bob_id)
         await hass.async_block_till_done()
 
         assert len(_tracker_entity_ids(hass, entry)) == 1
+        assert len(_tracker_entity_ids(hass, entry, "image")) == 1
         assert (
             dr.async_get(hass).async_get_device_by_identifier(
                 (DOMAIN, bob_id), entry.entry_id

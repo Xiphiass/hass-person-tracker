@@ -40,6 +40,7 @@ from .const import (
 from .detection import DetectionCoordinator
 from .helpers import (
     discover_reference_images,
+    find_person_thumbnail,
     get_person_images_dir,
     is_entity_pending,
 )
@@ -134,6 +135,10 @@ async def _async_build_entry_data(
                 person.name,
                 get_person_images_dir(hass, person.name),
             )
+        if thumbnail := await hass.async_add_executor_job(
+            find_person_thumbnail, hass, person.name
+        ):
+            person.last_thumbnail, person.last_thumbnail_updated = thumbnail
         people[subentry.subentry_id] = person
 
     cameras: dict[str, Camera] = {}

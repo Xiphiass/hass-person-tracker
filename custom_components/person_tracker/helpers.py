@@ -4,7 +4,7 @@ last-seen person thumbnails, unknown snapshots."""
 from __future__ import annotations
 
 import io
-from datetime import timedelta
+from datetime import datetime, timedelta
 from logging import getLogger
 from mimetypes import guess_extension
 from pathlib import Path
@@ -161,6 +161,30 @@ def get_thumbnails_dir(hass: HomeAssistant) -> Path:
     (ADR 0005).
     """
     return Path(hass.config.path(DOMAIN, THUMBNAILS_DIR))
+
+
+def find_person_thumbnail(
+    hass: HomeAssistant, person_name: str
+) -> tuple[Path, datetime] | None:
+    """*person_name*'s saved thumbnail and its modification time, or None.
+
+    Lets the image entity show the last detection again after a restart or
+    reload. Does blocking I/O; run it in the executor.
+    """
+    folder = get_thumbnails_dir(hass)
+    slug = person_slug(person_name)
+    try:
+        candidates = [
+            (path, path.stat().st_mtime)
+            for path in folder.iterdir()
+            if path.is_file() and path.stem == slug
+        ]
+    except OSError:
+        return None
+    if not candidates:
+        return None
+    path, mtime = max(candidates, key=lambda candidate: candidate[1])
+    return path, dt_util.utc_from_timestamp(mtime)
 
 
 def _crop_box(bbox: list[float], width: int, height: int) -> tuple[int, int, int, int]:

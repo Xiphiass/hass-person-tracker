@@ -8,8 +8,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 
-from .const import DEFAULT_COOLDOWN_SECONDS, DEFAULT_TTL_MINUTES
+from .const import DEFAULT_COOLDOWN_SECONDS, DEFAULT_TTL_MINUTES, DOMAIN
 
 if TYPE_CHECKING:
     from .detection import DetectionCoordinator
@@ -42,15 +43,25 @@ class Person:
     area_id: str | None = None
     last_seen: datetime | None = None
     last_camera: str | None = None
-    # Saved image of the last detection (Issue #3): path, relative to the
-    # HA config dir, of the per-person thumbnail (the snapshot cropped
-    # tight around the person).
-    last_thumbnail: str | None = None
+    # Saved image of the last detection (Issue #3): the per-person
+    # thumbnail file (the snapshot cropped tight around the person) and when
+    # it was written. Shown by the person's image entity.
+    last_thumbnail: Path | None = None
+    last_thumbnail_updated: datetime | None = None
 
     @property
     def ttl(self) -> timedelta:
         """How long a sighting stays valid before the state becomes unknown."""
         return timedelta(minutes=self.ttl_minutes)
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        """The person's device, shared by all of their entities (ADR 0002)."""
+        return DeviceInfo(
+            identifiers={(DOMAIN, self.subentry_id)},
+            name=self.name,
+            entry_type=DeviceEntryType.SERVICE,
+        )
 
 
 @dataclass
