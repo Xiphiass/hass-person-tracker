@@ -8,5 +8,5 @@
   "iot_class": "calculated",
   "requirements": [],
   "version": "0.1.0-rc1",
-  "dependencies": ["ai_task"]
+  "dependencies": ["ai_task", "media_source"]
 }

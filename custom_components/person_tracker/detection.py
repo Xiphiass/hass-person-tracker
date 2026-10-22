@@ -2,7 +2,9 @@
 
 Subscribes to every configured trigger binary sensor. On an OFF -> ON edge,
 the matching camera's snapshot is sent to the configured AI task entity,
-which identifies the household members in the scene (Issue #3). Each
+together with every person's reference images, and the AI identifies the
+household members in the scene (Issue #3). Reference images are re-read from
+disk on every run, so added or replaced files apply without a reload. Each
 identified person's location, area, last_seen and last_camera are updated,
 and their tracker entity is nudged through a per-person dispatcher signal.
 
@@ -16,6 +18,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from datetime import datetime, timedelta
 from logging import getLogger
+from pathlib import Path
 from typing import Any, TypedDict
 
 import probatio
@@ -40,11 +43,14 @@ from homeassistant.util import dt as dt_util
 from .const import (
     AI_TASK_INSTRUCTIONS,
     AI_TASK_NAME,
+    DOMAIN,
+    PEOPLE_DIR,
     SIGNAL_TRACKER_UPDATE_PERSON,
     UNKNOWN_SNAPSHOT_CLEANUP_HOURS,
     UNKNOWN_SNAPSHOT_RETENTION_DAYS,
 )
 from .helpers import (
+    discover_reference_images,
     get_camera_area,
     purge_unknown_snapshots,
     save_person_thumbnail,
@@ -160,10 +166,35 @@ def unknown_person_count(data: Any) -> int | None:
     return count
 
 
+def _reference_image_id(person: Person, path: Path) -> str:
+    """The media source ID of *person*'s reference image *path*."""
+    return f"media-source://{DOMAIN}/{PEOPLE_DIR}/{person.name}/{path.name}"
+
+
 def _build_instructions(data: PersonTrackerData) -> str:
-    """The identification prompt, listing the configured household members."""
+    """The identification prompt, listing the configured household members.
+
+    Describes the attachment order: the snapshot first, then each person's
+    reference images in ``data.people`` order.
+    """
     names = ", ".join(sorted(data.person_names)) or "no one"
-    return f"Household members to look for: {names}. {AI_TASK_INSTRUCTIONS}"
+    references: list[str] = []
+    position = 2
+    for person in data.people.values():
+        if count := len(person.reference_images):
+            last = position + count - 1
+            images = f"image {position}" if count == 1 else f"images {position}-{last}"
+            references.append(f"{images}: {person.name}")
+            position = last + 1
+    if not references:
+        return f"Household members to look for: {names}. {AI_TASK_INSTRUCTIONS}"
+    return (
+        f"Household members to look for: {names}. The first attached image is "
+        "the camera snapshot. The images after it are reference photos of "
+        f"household members, use them to recognize who is who: "
+        f"{'; '.join(references)}. Report only people visible in the camera "
+        f"snapshot. {AI_TASK_INSTRUCTIONS}"
+    )
 
 
 class DetectionCoordinator:
@@ -257,6 +288,19 @@ class DetectionCoordinator:
             else:
                 self._last_run[camera.entity_id] = last
 
+    async def _async_refresh_reference_images(self) -> None:
+        """Re-read every person's reference images from disk.
+
+        Done on each run so files added, replaced or removed after setup
+        apply without a reload.
+        """
+        people = list(self._data.people.values())
+        found = await self._hass.async_add_executor_job(
+            lambda: [discover_reference_images(self._hass, p.name) for p in people]
+        )
+        for person, images in zip(people, found, strict=True):
+            person.reference_images = images
+
     async def _async_detect(self, camera: Camera) -> bool:
         """Run the AI task on a snapshot of *camera* and apply its result.
 
@@ -282,6 +326,15 @@ class DetectionCoordinator:
         except HomeAssistantError as err:
             _LOGGER.error("Snapshot failed for %s: %s", camera.entity_id, err)
             return False
+        await self._async_refresh_reference_images()
+        attachments = [
+            {"media_content_id": f"media-source://camera/{camera.entity_id}"}
+        ]
+        attachments.extend(
+            {"media_content_id": _reference_image_id(person, path)}
+            for person in self._data.people.values()
+            for path in person.reference_images
+        )
         result: GenDataTaskResult
         try:
             result = await async_generate_data(
@@ -290,9 +343,7 @@ class DetectionCoordinator:
                 entity_id=self._data.ai_task_entity_id,
                 instructions=_build_instructions(self._data),
                 structure=AI_RESULT_STRUCTURE,
-                attachments=[
-                    {"media_content_id": f"media-source://camera/{camera.entity_id}"}
-                ],
+                attachments=attachments,
             )
         # Provider-side failures (down, timeout, malformed structured
         # output) surface as HomeAssistantError or a probatio validation

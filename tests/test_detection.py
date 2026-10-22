@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
@@ -11,6 +12,7 @@ import probatio.error
 import pytest
 
 from homeassistant.components.ai_task.task import GenDataTaskResult
+from homeassistant.components import media_source
 from homeassistant.components.camera import Image
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
@@ -27,6 +29,15 @@ from .conftest import add_camera, entry_data, person, setup_entry
 DOMAIN = const.DOMAIN
 TRIGGER = "binary_sensor.front_door_person"
 CAMERA = "camera.front_door"
+
+
+@pytest.fixture
+def reference_images_dir(hass: HomeAssistant, tmp_path: Path) -> Path:
+    """Point the HA config dir at *tmp_path*; return the reference-images root."""
+    hass.config.config_dir = str(tmp_path)
+    people = tmp_path / DOMAIN / "people"
+    people.mkdir(parents=True)
+    return people
 
 
 def _ai_result(names: list[str]) -> GenDataTaskResult:
@@ -489,3 +500,64 @@ async def test_failed_run_does_not_consume_cooldown(
 
             await _fire_edge(hass)  # inside the cooldown, but runs anyway
             assert _tracker_state(hass, "Alice") == "Garden"
+
+
+async def test_reference_images_are_attached(
+    hass: HomeAssistant, default_ai_task: None, reference_images_dir: Path
+) -> None:
+    """Each run attaches the reference images found on disk at that moment.
+
+    Images added after setup are picked up without a reload, and the prompt
+    says which attachment shows whom.
+    """
+    add_camera(hass, CAMERA, area_name="Garden")
+    hass.states.async_set(TRIGGER, "off")
+
+    with _mock_ai(_ai_result(["Alice"])) as ai_task_mock, _mock_image():
+        async with setup_entry(
+            hass,
+            entry_data(cooldown_seconds=0),
+            people=[person("Alice"), person("Bob")],
+        ):
+            (reference_images_dir / "Alice" / "a.jpg").write_bytes(b"a")
+            (reference_images_dir / "Alice" / "b.png").write_bytes(b"b")
+            (reference_images_dir / "Alice" / "notes.txt").write_text("x")
+            (reference_images_dir / "Bob" / "bob.jpg").write_bytes(b"c")
+            await _fire_edge(hass)
+
+            kwargs = ai_task_mock.call_args.kwargs
+            assert kwargs["attachments"] == [
+                {"media_content_id": f"media-source://camera/{CAMERA}"},
+                {"media_content_id": f"media-source://{DOMAIN}/people/Alice/a.jpg"},
+                {"media_content_id": f"media-source://{DOMAIN}/people/Alice/b.png"},
+                {"media_content_id": f"media-source://{DOMAIN}/people/Bob/bob.jpg"},
+            ]
+            assert "images 2-3: Alice; image 4: Bob" in kwargs["instructions"]
+            assert const.AI_TASK_INSTRUCTIONS in kwargs["instructions"]
+
+            # A removed image is no longer sent on the next run.
+            (reference_images_dir / "Alice" / "b.png").unlink()
+            await _fire_edge(hass)
+
+            kwargs = ai_task_mock.call_args.kwargs
+            assert len(kwargs["attachments"]) == 3
+            assert "image 2: Alice; image 3: Bob" in kwargs["instructions"]
+
+
+async def test_reference_image_resolves_to_local_file(
+    hass: HomeAssistant, default_ai_task: None, reference_images_dir: Path
+) -> None:
+    """The AI Task can resolve a reference image ID to its file on disk."""
+    add_camera(hass, CAMERA, area_name="Garden")
+    hass.states.async_set(TRIGGER, "off")
+
+    async with setup_entry(hass, entry_data(), people=[person("Alice Smith")]):
+        image = reference_images_dir / "Alice Smith" / "face.jpg"
+        image.write_bytes(b"a")
+
+        media = await media_source.async_resolve_media(
+            hass, f"media-source://{DOMAIN}/people/Alice Smith/face.jpg", None
+        )
+
+        assert media.path == image
+        assert media.mime_type == "image/jpeg"

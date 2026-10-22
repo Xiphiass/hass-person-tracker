@@ -30,7 +30,7 @@ The integration is configured entirely through the Home Assistant UI:
    - Choose the AI Task entity for identification.
    - Configure the detection cooldown period.
 4. After initial setup, you can add, edit, or remove persons from the integration's configuration page.
-5. For each person, place reference images in your Home Assistant configuration directory under `person_tracker/people/<person_name>/`.
+5. For each person, place reference images in your Home Assistant configuration directory under `person_tracker/people/<person_name>/`. They are sent to the AI along with every camera snapshot to recognize who is who. Changes apply on the next detection, no reload needed. Each reference image adds to the size, and so the cost, of every AI request, so a few clear photos per person work best.
 
 ## Requirements
 
