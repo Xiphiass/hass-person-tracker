@@ -11,6 +11,7 @@ from custom_components.person_tracker.detection import (
     unknown_person_count,
     validate_ai_response,
 )
+import probatio
 
 
 def test_full_shape() -> None:
@@ -118,7 +119,7 @@ def test_ai_result_structure_uses_task_name_and_persons_array() -> None:
     assert spec["persons"][0]["name"] is str
     assert spec["persons"][0]["confidence"] is float
     # An optional tight bounding box around each person (Issue #3).
-    assert spec["persons"][0]["bbox"] == [float, float, float, float]
+    assert isinstance(spec["persons"][0]["bbox"], probatio.ExactSequence)
     assert spec["unknown_persons"] is int
 
 

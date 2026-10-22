@@ -61,7 +61,9 @@ AI_RESULT_STRUCTURE = probatio.Schema(
             {
                 "name": str,
                 "confidence": float,
-                probatio.Optional("bbox"): [float, float, float, float],
+                probatio.Optional("bbox"): probatio.ExactSequence(
+                    [float, float, float, float]
+                ),
             }
         ],
         "unknown_persons": int,
