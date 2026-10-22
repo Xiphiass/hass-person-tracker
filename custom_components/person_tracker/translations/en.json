@@ -100,7 +100,7 @@
       "step": {
         "user": {
           "title": "Add person",
-          "description": "Reference images go in <config>/person_tracker/people/<name>/.",
+          "description": "Reference images go in a folder named after the person inside {people_dir}.",
           "data": {
             "name": "Person name",
             "ttl": "TTL (minutes)",
@@ -113,7 +113,7 @@
         },
         "reconfigure": {
           "title": "Edit person",
-          "description": "Renaming a person also renames their reference image folder <config>/person_tracker/people/<name>/; move the images accordingly.",
+          "description": "This person's reference images are in {images_dir}. Renaming the person also renames that folder; move the images accordingly.",
           "data": {
             "name": "Person name",
             "ttl": "TTL (minutes)",
