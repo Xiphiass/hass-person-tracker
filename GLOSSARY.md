@@ -32,6 +32,12 @@ _Avoid_: sample picture, training set
 The AI step that decides which Persons appear in a Snapshot, constrained to the known Persons, using their reference images.
 _Avoid_: recognition, classification
 
+**Description**:
+Optional free-text distinguishing features of a Person (height, build, hair, glasses, ...), sent to Identification alongside the reference images. Supports telling Persons apart; on its own it never justifies a confident identification.
+
+**Minimum confidence**:
+The global threshold (0-1) below which an Identification is not trusted: the Person's tracker is not updated and the Snapshot is kept as an Unknown snapshot.
+
 **Authoritative tracker**:
 An optional external device_tracker per Person (e.g. their phone) that outranks the camera tracker: when it reports the Person away, the camera tracker is immediately demoted to unknown.
 

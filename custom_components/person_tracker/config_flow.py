@@ -27,6 +27,7 @@ from homeassistant.helpers.selector import (
     NumberSelectorConfig,
     NumberSelectorMode,
     TextSelector,
+    TextSelectorConfig,
 )
 
 from .const import (
@@ -38,11 +39,14 @@ from .const import (
     CONF_CAMERA,
     CONF_CAMERAS,
     CONF_COOLDOWN,
+    CONF_DESCRIPTION,
+    CONF_MIN_CONFIDENCE,
     CONF_PERSON_NAME,
     CONF_REMOVE_CAMERAS,
     CONF_TTL,
     CONF_TRIGGERS,
     DEFAULT_COOLDOWN_SECONDS,
+    DEFAULT_MIN_CONFIDENCE,
     DEFAULT_TTL_MINUTES,
     DOMAIN,
     ERR_NO_CAMERAS,
@@ -71,6 +75,9 @@ _PERSON_SCHEMA = probatio.Schema(
         probatio.Optional(CONF_AUTHORITATIVE_TRACKER): EntitySelector(
             EntitySelectorConfig(domain="device_tracker")
         ),
+        probatio.Optional(CONF_DESCRIPTION): TextSelector(
+            TextSelectorConfig(multiline=True)
+        ),
     }
 )
 _TRIGGERS_SELECTOR = EntitySelector(
@@ -97,13 +104,18 @@ _AI_TASK_SCHEMA = probatio.Schema(
         )
     }
 )
-_COOLDOWN_SCHEMA = probatio.Schema(
+_DETECTION_SCHEMA = probatio.Schema(
     {
         probatio.Required(CONF_COOLDOWN): NumberSelector(
             NumberSelectorConfig(
                 min=1, max=MAX_COOLDOWN_SECONDS, mode=NumberSelectorMode.BOX
             )
-        )
+        ),
+        probatio.Required(CONF_MIN_CONFIDENCE): NumberSelector(
+            NumberSelectorConfig(
+                min=0, max=1, step=0.05, mode=NumberSelectorMode.SLIDER
+            )
+        ),
     }
 )
 
@@ -220,7 +232,7 @@ class PersonTrackerConfigFlow(ConfigFlow, domain=DOMAIN):
                 self._ai_task_entity = ai_task_entity
                 if self._reconfiguring:
                     return self._save(**{CONF_AI_TASK_ENTITY: ai_task_entity})
-                return await self.async_step_cooldown()
+                return await self.async_step_detection()
         elif self._reconfiguring:
             user_input = dict(self._get_reconfigure_entry().data)
         else:
@@ -233,35 +245,37 @@ class PersonTrackerConfigFlow(ConfigFlow, domain=DOMAIN):
             errors=errors,
         )
 
-    async def async_step_cooldown(
+    async def async_step_detection(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Set the detection cooldown (global setting, Issue #3)."""
+        """Set the detection cooldown and minimum confidence (global settings)."""
         errors: dict[str, str] = {}
         if user_input is not None:
-            cooldown = int(user_input[CONF_COOLDOWN])
+            settings = {
+                CONF_COOLDOWN: int(user_input[CONF_COOLDOWN]),
+                CONF_MIN_CONFIDENCE: float(user_input[CONF_MIN_CONFIDENCE]),
+            }
             if self._reconfiguring:
-                return self._save(**{CONF_COOLDOWN: cooldown})
+                return self._save(**settings)
             return self.async_create_entry(
                 title="Person Tracker",
                 data={
                     CONF_CAMERAS: self._cameras,
                     CONF_AI_TASK_ENTITY: self._ai_task_entity,
-                    CONF_COOLDOWN: cooldown,
+                    **settings,
                 },
             )
-        if self._reconfiguring:
-            user_input = {
-                CONF_COOLDOWN: self._get_reconfigure_entry().data.get(
-                    CONF_COOLDOWN, DEFAULT_COOLDOWN_SECONDS
-                )
-            }
-        else:
-            user_input = {CONF_COOLDOWN: DEFAULT_COOLDOWN_SECONDS}
+        stored = self._get_reconfigure_entry().data if self._reconfiguring else {}
+        user_input = {
+            CONF_COOLDOWN: stored.get(CONF_COOLDOWN, DEFAULT_COOLDOWN_SECONDS),
+            CONF_MIN_CONFIDENCE: stored.get(
+                CONF_MIN_CONFIDENCE, DEFAULT_MIN_CONFIDENCE
+            ),
+        }
         return self.async_show_form(
-            step_id="cooldown",
+            step_id="detection",
             data_schema=self.add_suggested_values_to_schema(
-                _COOLDOWN_SCHEMA, user_input
+                _DETECTION_SCHEMA, user_input
             ),
             errors=errors,
         )
@@ -278,7 +292,7 @@ class PersonTrackerConfigFlow(ConfigFlow, domain=DOMAIN):
                 "camera_edit",
                 "camera_remove",
                 "ai_task",
-                "cooldown",
+                "detection",
             ],
         )
 
@@ -375,6 +389,8 @@ class PersonSubentryFlow(ConfigSubentryFlow):
         }
         if authoritative:
             data[CONF_AUTHORITATIVE_TRACKER] = authoritative
+        if description := (user_input.get(CONF_DESCRIPTION) or "").strip():
+            data[CONF_DESCRIPTION] = description
         return data, {}
 
     def _show_form(

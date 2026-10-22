@@ -76,17 +76,21 @@ async def test_flow_creates_entry(
         hass, result, {const.CONF_AI_TASK_ENTITY: "ai_task.openai"}
     )
     assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "cooldown"
-    cooldown_key = next(iter(result["data_schema"].schema))
+    assert result["step_id"] == "detection"
+    cooldown_key, confidence_key = result["data_schema"].schema
     assert cooldown_key.description == {"suggested_value": 30}
+    assert confidence_key.description == {"suggested_value": 0.7}
 
-    result = await _configure(hass, result, {const.CONF_COOLDOWN: 45})
+    result = await _configure(
+        hass, result, {const.CONF_COOLDOWN: 45, const.CONF_MIN_CONFIDENCE: 0.8}
+    )
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["title"] == "Person Tracker"
     assert result["data"] == {
         const.CONF_CAMERAS: [FRONT_DOOR],
         const.CONF_AI_TASK_ENTITY: "ai_task.openai",
         const.CONF_COOLDOWN: 45,
+        const.CONF_MIN_CONFIDENCE: 0.8,
     }
     entry = hass.config_entries.async_entries(DOMAIN)[0]
     assert entry.data == result["data"]
@@ -107,12 +111,15 @@ async def test_flow_multiple_cameras(
     result = await _configure(
         hass, result, {const.CONF_AI_TASK_ENTITY: "ai_task.openai"}
     )
-    result = await _configure(hass, result, {const.CONF_COOLDOWN: 30})
+    result = await _configure(
+        hass, result, {const.CONF_COOLDOWN: 30, const.CONF_MIN_CONFIDENCE: 0.7}
+    )
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["data"] == {
         const.CONF_CAMERAS: [FRONT_DOOR, BACK_DOOR],
         const.CONF_AI_TASK_ENTITY: "ai_task.openai",
         const.CONF_COOLDOWN: 30,
+        const.CONF_MIN_CONFIDENCE: 0.7,
     }
 
 
@@ -319,29 +326,36 @@ async def test_reconfigure_ai_task(
         assert schema_key.description == {"suggested_value": "ai_task.other"}
 
 
-async def test_reconfigure_cooldown(
+async def test_reconfigure_detection_settings(
     hass: HomeAssistant, default_ai_task: None, cameras: None
 ) -> None:
-    """The detection cooldown is a global setting, editable via Reconfigure."""
+    """Cooldown and minimum confidence are editable via Reconfigure."""
     async with setup_entry(hass) as entry:
         result = await _to_camera_form(hass, entry)
-        result = await _configure(hass, result, {"next_step_id": "cooldown"})
-        assert result["step_id"] == "cooldown"
-        # No cooldown stored yet: the default is suggested.
-        cooldown_key = next(iter(result["data_schema"].schema))
+        result = await _configure(hass, result, {"next_step_id": "detection"})
+        assert result["step_id"] == "detection"
+        # Nothing stored yet: the defaults are suggested.
+        cooldown_key, confidence_key = result["data_schema"].schema
         assert cooldown_key.description == {"suggested_value": 30}
+        assert confidence_key.description == {"suggested_value": 0.7}
+        assert entry.runtime_data.min_confidence == 0.7
 
-        result = await _configure(hass, result, {const.CONF_COOLDOWN: 120})
+        result = await _configure(
+            hass, result, {const.CONF_COOLDOWN: 120, const.CONF_MIN_CONFIDENCE: 0.85}
+        )
         assert result["reason"] == "reconfigure_successful"
         await hass.async_block_till_done()
         assert entry.data[const.CONF_COOLDOWN] == 120
+        assert entry.data[const.CONF_MIN_CONFIDENCE] == 0.85
         assert entry.runtime_data.cooldown_seconds == 120
+        assert entry.runtime_data.min_confidence == 0.85
 
-        # The stored value is now suggested.
+        # The stored values are now suggested.
         result = await _to_camera_form(hass, entry)
-        result = await _configure(hass, result, {"next_step_id": "cooldown"})
-        cooldown_key = next(iter(result["data_schema"].schema))
+        result = await _configure(hass, result, {"next_step_id": "detection"})
+        cooldown_key, confidence_key = result["data_schema"].schema
         assert cooldown_key.description == {"suggested_value": 120}
+        assert confidence_key.description == {"suggested_value": 0.85}
 
 
 async def test_reconfigure_entry_in_setup_error(
@@ -432,6 +446,31 @@ async def test_add_person_default_ttl(
         # Adding Bob scheduled an entry reload; let it finish so teardown
         # unloads a settled (not mid-setup) entry.
         await hass.async_block_till_done()
+
+
+@pytest.mark.parametrize(
+    ("description", "expected"),
+    [("  tall, short beard \n", "tall, short beard"), ("   ", None)],
+)
+async def test_add_person_description(
+    hass: HomeAssistant,
+    default_ai_task: None,
+    cameras: None,
+    description: str,
+    expected: str | None,
+) -> None:
+    """The optional description is stored stripped; a blank one is omitted."""
+    async with setup_entry(hass, people=[]) as entry:
+        result = await _init_person_flow(hass, entry)
+        result = await _configure_person(
+            hass,
+            result,
+            {const.CONF_PERSON_NAME: "Bob", const.CONF_DESCRIPTION: description},
+        )
+        assert result["data"].get(const.CONF_DESCRIPTION) == expected
+        await hass.async_block_till_done()
+        (bob,) = entry.runtime_data.people.values()
+        assert bob.description == expected
 
 
 @pytest.mark.parametrize(

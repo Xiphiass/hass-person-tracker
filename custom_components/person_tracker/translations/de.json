@@ -31,11 +31,15 @@
           "ai_task_entity": "KI-Aufgaben-Entität"
         }
       },
-      "cooldown": {
-        "title": "Erkennungspausenzeit",
-        "description": "Wie lange in Sekunden gewartet werden soll, bis dieselbe Kamera erneut durchsucht wird.",
+      "detection": {
+        "title": "Erkennungseinstellungen",
+        "description": "Wie lange zwischen zwei Erkennungen derselben Kamera gewartet wird und wie sicher sich die KI sein muss, bevor eine Person als erkannt gilt.",
         "data": {
-          "cooldown": "Pausenzeit (Sekunden)"
+          "cooldown": "Pausenzeit (Sekunden)",
+          "min_confidence": "Mindest-Konfidenz"
+        },
+        "data_description": {
+          "min_confidence": "Erkennungen unter dieser Konfidenz (0-1) aktualisieren keinen Tracker; der Schnappschuss wird stattdessen als unbekannter Schnappschuss gespeichert. Erhöhe den Wert, wenn Personen verwechselt werden."
         }
       },
       "reconfigure": {
@@ -46,7 +50,7 @@
           "camera_edit": "Auslöser einer Kamera ändern",
           "camera_remove": "Kameras entfernen",
           "ai_task": "KI-Aufgaben-Entität ändern",
-          "cooldown": "Erkennungspausenzeit ändern"
+          "detection": "Erkennungseinstellungen ändern"
         }
       },
       "camera_edit": {
@@ -100,7 +104,11 @@
           "data": {
             "name": "Name der Person",
             "ttl": "TTL (Minuten)",
-            "authoritative_tracker": "Maßgeblicher Tracker (optional)"
+            "authoritative_tracker": "Maßgeblicher Tracker (optional)",
+            "description": "Beschreibung (optional)"
+          },
+          "data_description": {
+            "description": "Unterscheidungsmerkmale, z. B. Größe, Statur, Haare, Brille, Bart. Wird an die KI gesendet, damit sie Haushaltsmitglieder auch ohne sichtbares Gesicht unterscheiden kann."
           }
         },
         "reconfigure": {
@@ -109,7 +117,11 @@
           "data": {
             "name": "Name der Person",
             "ttl": "TTL (Minuten)",
-            "authoritative_tracker": "Maßgeblicher Tracker (optional)"
+            "authoritative_tracker": "Maßgeblicher Tracker (optional)",
+            "description": "Beschreibung (optional)"
+          },
+          "data_description": {
+            "description": "Unterscheidungsmerkmale, z. B. Größe, Statur, Haare, Brille, Bart. Wird an die KI gesendet, damit sie Haushaltsmitglieder auch ohne sichtbares Gesicht unterscheiden kann."
           }
         }
       },

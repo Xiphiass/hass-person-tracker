@@ -184,9 +184,21 @@ def _build_instructions(data: PersonTrackerData) -> str:
     """The identification prompt, listing the configured household members.
 
     Describes the attachment order: the snapshot first, then each person's
-    reference images in ``data.people`` order.
+    reference images in ``data.people`` order, and appends the people's
+    optional descriptions.
     """
     names = ", ".join(sorted(data.person_names)) or "no one"
+    descriptions = "; ".join(
+        f"{person.name}: {person.description}"
+        for person in sorted(data.people.values(), key=lambda p: p.name)
+        if person.description
+    )
+    if descriptions:
+        descriptions = (
+            f" Descriptions of household members: {descriptions}. Use them "
+            "only to tell household members apart; a match on the "
+            "description alone, without a visible face, is low confidence."
+        )
     references: list[str] = []
     position = 2
     for person in data.people.values():
@@ -196,12 +208,16 @@ def _build_instructions(data: PersonTrackerData) -> str:
             references.append(f"{images}: {person.name}")
             position = last + 1
     if not references:
-        return f"Household members to look for: {names}. {AI_TASK_INSTRUCTIONS}"
+        return (
+            f"Household members to look for: {names}.{descriptions} "
+            f"{AI_TASK_INSTRUCTIONS}"
+        )
     return (
-        f"Household members to look for: {names}. The first attached image is "
-        "the camera snapshot. The images after it are reference photos of "
-        f"household members, use them to recognize who is who: "
-        f"{'; '.join(references)}. Report only people visible in the camera "
+        f"Household members to look for: {names}.{descriptions} The first "
+        "attached image is the camera snapshot. The images after it are "
+        "reference photos of household members, use them to recognize who is "
+        f"who: {'; '.join(references)}. Report only people visible in the "
+        "camera "
         f"snapshot. {AI_TASK_INSTRUCTIONS}"
     )
 
@@ -383,9 +399,23 @@ class DetectionCoordinator:
                 result.data,
             )
             return False
+        # Uncertain hits update no tracker; the sighting is then kept as an
+        # unknown snapshot below.
+        accepted = []
+        for hit in hits:
+            if hit["confidence"] >= self._data.min_confidence:
+                accepted.append(hit)
+            else:
+                _LOGGER.debug(
+                    "Ignoring %r on %s: confidence %.2f is below %.2f.",
+                    hit["name"],
+                    camera.entity_id,
+                    hit["confidence"],
+                    self._data.min_confidence,
+                )
         identified = False
         now = dt_util.now()
-        for hit in hits:
+        for hit in accepted:
             person = self._find_person(hit["name"])
             if person is None:
                 _LOGGER.debug("Ignoring unrecognized person %r.", hit["name"])

@@ -28,8 +28,8 @@ The integration is configured entirely through the Home Assistant UI:
 3. Follow the instructions to:
    - Select the cameras to monitor and assign trigger binary sensors to them.
    - Choose the AI Task entity for identification.
-   - Configure the detection cooldown period.
-4. After initial setup, you can add, edit, or remove persons from the integration's configuration page.
+   - Configure the detection cooldown period and the minimum confidence (default 0.7). Identifications the AI reports below the minimum confidence update no tracker; the snapshot is kept as an unknown snapshot instead. Raise the value if people get mixed up.
+4. After initial setup, you can add, edit, or remove persons from the integration's configuration page. Each person can have an optional description of distinguishing features (height, build, hair, glasses, ...), which is sent to the AI to help tell household members apart when the face is not visible.
 5. For each person, place reference images in your Home Assistant configuration directory under `person_tracker/people/<person_name>/`. They are sent to the AI along with every camera snapshot to recognize who is who. Changes apply on the next detection, no reload needed. Each reference image adds to the size, and so the cost, of every AI request, so a few clear photos per person work best.
 
 ## Requirements

@@ -131,6 +131,78 @@ async def test_trigger_edge_updates_tracker(
             assert attributes[const.ATTR_AREA_ID]
 
 
+async def test_min_confidence_filters_hits(
+    hass: HomeAssistant, default_ai_task: None
+) -> None:
+    """Only hits at or above the minimum confidence update a tracker."""
+    add_camera(hass, CAMERA, area_name="Garden")
+    hass.states.async_set(TRIGGER, "off")
+
+    result = GenDataTaskResult(
+        conversation_id="test-conversation",
+        data={
+            "persons": [
+                {"name": "Alice", "confidence": 0.8},
+                {"name": "Bob", "confidence": 0.79},
+            ]
+        },
+    )
+    with _mock_ai(result), _mock_image():
+        async with setup_entry(
+            hass,
+            entry_data(cooldown_seconds=0, min_confidence=0.8),
+            people=[person("Alice"), person("Bob")],
+        ):
+            await _fire_edge(hass)
+
+            assert _tracker_state(hass, "Alice") == "Garden"
+            assert _tracker_state(hass, "Bob") == "unknown"
+
+
+async def test_descriptions_are_sent_to_the_ai(
+    hass: HomeAssistant, default_ai_task: None
+) -> None:
+    """Each person's description is part of the identification prompt."""
+    add_camera(hass, CAMERA, area_name="Garden")
+    hass.states.async_set(TRIGGER, "off")
+
+    with _mock_ai(_ai_result([])) as ai_task_mock, _mock_image():
+        async with setup_entry(
+            hass,
+            entry_data(cooldown_seconds=0),
+            people=[
+                person("Alice", description="long dark hair, 1.65 m"),
+                person("Bob"),
+            ],
+        ):
+            await _fire_edge(hass)
+
+            _, kwargs = ai_task_mock.call_args
+            instructions = kwargs["instructions"]
+            assert (
+                "Descriptions of household members: Alice: long dark hair, 1.65 m."
+                in instructions
+            )
+            assert "Bob:" not in instructions
+
+
+async def test_no_descriptions_section_without_descriptions(
+    hass: HomeAssistant, default_ai_task: None
+) -> None:
+    """Without any description the prompt has no descriptions section."""
+    add_camera(hass, CAMERA, area_name="Garden")
+    hass.states.async_set(TRIGGER, "off")
+
+    with _mock_ai(_ai_result([])) as ai_task_mock, _mock_image():
+        async with setup_entry(
+            hass, entry_data(cooldown_seconds=0), people=[person("Alice")]
+        ):
+            await _fire_edge(hass)
+
+            _, kwargs = ai_task_mock.call_args
+            assert "Descriptions" not in kwargs["instructions"]
+
+
 async def test_only_off_to_on_edges_detect(
     hass: HomeAssistant, default_ai_task: None
 ) -> None:

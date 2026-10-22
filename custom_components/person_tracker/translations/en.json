@@ -31,11 +31,15 @@
           "ai_task_entity": "AI task entity"
         }
       },
-      "cooldown": {
-        "title": "Detection cooldown",
-        "description": "How long to wait between detection runs on the same camera, in seconds.",
+      "detection": {
+        "title": "Detection settings",
+        "description": "How long to wait between detection runs on the same camera, and how confident the AI must be before a person is considered identified.",
         "data": {
-          "cooldown": "Cooldown (seconds)"
+          "cooldown": "Cooldown (seconds)",
+          "min_confidence": "Minimum confidence"
+        },
+        "data_description": {
+          "min_confidence": "Identifications below this confidence (0-1) update no tracker; the snapshot is kept as an unknown snapshot instead. Raise it if people get mixed up."
         }
       },
       "reconfigure": {
@@ -46,7 +50,7 @@
           "camera_edit": "Change a camera's triggers",
           "camera_remove": "Remove cameras",
           "ai_task": "Change the AI task entity",
-          "cooldown": "Change the detection cooldown"
+          "detection": "Change the detection settings"
         }
       },
       "camera_edit": {
@@ -100,7 +104,11 @@
           "data": {
             "name": "Person name",
             "ttl": "TTL (minutes)",
-            "authoritative_tracker": "Authoritative tracker (optional)"
+            "authoritative_tracker": "Authoritative tracker (optional)",
+            "description": "Description (optional)"
+          },
+          "data_description": {
+            "description": "Distinguishing features, e.g. height, build, hair, glasses, beard. Sent to the AI to help tell household members apart when the face is not visible."
           }
         },
         "reconfigure": {
@@ -109,7 +117,11 @@
           "data": {
             "name": "Person name",
             "ttl": "TTL (minutes)",
-            "authoritative_tracker": "Authoritative tracker (optional)"
+            "authoritative_tracker": "Authoritative tracker (optional)",
+            "description": "Description (optional)"
+          },
+          "data_description": {
+            "description": "Distinguishing features, e.g. height, build, hair, glasses, beard. Sent to the AI to help tell household members apart when the face is not visible."
           }
         }
       },

@@ -10,7 +10,12 @@ from typing import TYPE_CHECKING
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 
-from .const import DEFAULT_COOLDOWN_SECONDS, DEFAULT_TTL_MINUTES, DOMAIN
+from .const import (
+    DEFAULT_COOLDOWN_SECONDS,
+    DEFAULT_MIN_CONFIDENCE,
+    DEFAULT_TTL_MINUTES,
+    DOMAIN,
+)
 
 if TYPE_CHECKING:
     from .detection import DetectionCoordinator
@@ -36,6 +41,9 @@ class Person:
     name: str
     ttl_minutes: int = DEFAULT_TTL_MINUTES
     authoritative_tracker: str | None = None
+    # Optional distinguishing features (height, build, hair, ...), sent to
+    # the AI alongside the reference images.
+    description: str | None = None
     reference_images: list[Path] = field(default_factory=list)
 
     # Detection results — filled in by later tickets.
@@ -86,6 +94,8 @@ class PersonTrackerData:
     cameras: dict[str, Camera]
     # Seconds to wait between detection runs of the same camera (Issue #3).
     cooldown_seconds: int = DEFAULT_COOLDOWN_SECONDS
+    # Hits the AI reports below this confidence are not trusted.
+    min_confidence: float = DEFAULT_MIN_CONFIDENCE
     # The detection loop; set during entry setup.
     coordinator: DetectionCoordinator | None = None
 

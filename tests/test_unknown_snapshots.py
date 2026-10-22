@@ -163,6 +163,31 @@ async def test_none_result_saves_unknown_snapshot_and_keeps_state(
             )
 
 
+async def test_low_confidence_hit_saves_unknown_snapshot(
+    hass: HomeAssistant,
+    default_ai_task: None,
+    unknown_snapshots_dir: Path,
+) -> None:
+    """A hit below the minimum confidence is an unidentified sighting."""
+    add_camera(hass, CAMERA, area_name="Garden")
+    hass.states.async_set(TRIGGER, "off")
+
+    result = GenDataTaskResult(
+        conversation_id="test-conversation",
+        data={"persons": [{"name": "Alice", "confidence": 0.4}], "unknown_persons": 0},
+    )
+    with _mock_ai(result), _mock_image():
+        async with setup_entry(
+            hass,
+            entry_data(cooldown_seconds=0, min_confidence=0.7),
+            people=[person("Alice")],
+        ):
+            await _fire_edge(hass)
+
+            assert _tracker_state(hass, "Alice") == "unknown"
+            assert len(_saved_snapshots(unknown_snapshots_dir)) == 1
+
+
 async def test_unrecognized_person_saves_unknown_snapshot(
     hass: HomeAssistant,
     default_ai_task: None,

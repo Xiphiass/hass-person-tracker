@@ -12,6 +12,7 @@ PLATFORMS = [Platform.DEVICE_TRACKER, Platform.IMAGE]
 CONF_CAMERAS = "cameras"
 CONF_AI_TASK_ENTITY = "ai_task_entity"
 CONF_COOLDOWN = "cooldown"
+CONF_MIN_CONFIDENCE = "min_confidence"
 
 # Each Person is a config subentry of this type.
 SUBENTRY_PERSON = "person"
@@ -20,6 +21,7 @@ SUBENTRY_PERSON = "person"
 CONF_PERSON_NAME = "name"
 CONF_TTL = "ttl"
 CONF_AUTHORITATIVE_TRACKER = "authoritative_tracker"
+CONF_DESCRIPTION = "description"
 
 # Per-camera config keys.
 CONF_CAMERA = "camera"
@@ -33,6 +35,9 @@ DEFAULT_TTL_MINUTES = 30
 MAX_TTL_MINUTES = 1440
 DEFAULT_COOLDOWN_SECONDS = 30
 MAX_COOLDOWN_SECONDS = 300
+# Identifications the AI reports with a lower confidence are not trusted: they
+# update no tracker and the snapshot is kept as an unknown snapshot.
+DEFAULT_MIN_CONFIDENCE = 0.7
 
 # Reference images (ADR 0005): user-placed files under
 # <config>/person_tracker/people/<person>/<file>.
@@ -72,6 +77,12 @@ AI_TASK_INSTRUCTIONS = (
     "normalized to 0-1000 regardless of the image's pixel size: x runs from "
     "0 (left edge) to 1000 (right edge), y from 0 (top edge) to 1000 "
     "(bottom edge), and the order is x_min, y_min, x_max, y_max. "
+    '"confidence" is the probability (0-1) that the name is correct. Use a '
+    "high confidence only when the face is clearly visible and matches the "
+    "reference photos; when only body, clothing or posture is visible, use "
+    "0.5 or less. Give each visible person at most one name, and if you "
+    "cannot tell which household member someone is, count them in "
+    '"unknown_persons" instead of guessing. '
     'If no household member is visible, use an empty "persons" list. '
     'Also include "unknown_persons": the number of visible people who '
     "are not listed household members (0 if there are none, or if no one "
