@@ -1,5 +1,5 @@
 """HA-facing helpers: areas, AI task entity resolution, reference images,
-last-seen person thumbnails, unknown snapshots."""
+AI frames, last-seen person thumbnails, unknown snapshots."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 from logging import getLogger
 from mimetypes import guess_extension
 from pathlib import Path
+from uuid import uuid4
 
 from PIL import Image as PILImage
 from homeassistant.components import ai_task as ai_task_component
@@ -19,9 +20,12 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.util import dt as dt_util
 
 from .const import (
+    BBOX_SCALE,
     DOMAIN,
+    FRAMES_DIR,
     PEOPLE_DIR,
     REFERENCE_IMAGE_EXTENSIONS,
+    THUMBNAIL_MIN_BOX_AREA,
     THUMBNAIL_PADDING,
     THUMBNAILS_DIR,
     UNKNOWN_SNAPSHOTS_DIR,
@@ -187,27 +191,73 @@ def find_person_thumbnail(
     return path, dt_util.utc_from_timestamp(mtime)
 
 
-def _crop_box(bbox: list[float], width: int, height: int) -> tuple[int, int, int, int]:
+def get_frames_dir(hass: HomeAssistant) -> Path:
+    """Return the folder of frames being sent to the AI (Issue #3)."""
+    return Path(hass.config.path(DOMAIN, FRAMES_DIR))
+
+
+def save_frame(
+    hass: HomeAssistant, camera_entity_id: str, content: bytes, content_type: str
+) -> Path:
+    """Save the frame of *camera_entity_id* that is sent to the AI.
+
+    Each run gets its own file, so overlapping runs never share one. The
+    caller deletes it once the AI call is done. Does blocking I/O; run it in
+    the executor. Raises OSError when the write fails.
+    """
+    folder = get_frames_dir(hass)
+    folder.mkdir(parents=True, exist_ok=True)
+    camera_name = person_slug(camera_entity_id.split(".", 1)[-1])
+    extension = guess_extension(content_type) or ".jpg"
+    path = folder / f"{camera_name}_{uuid4().hex}{extension}"
+    path.write_bytes(content)
+    return path
+
+
+def delete_frame(path: Path) -> None:
+    """Delete a saved AI frame; a failure is logged, never raised.
+
+    Does blocking I/O; run it in the executor.
+    """
+    try:
+        path.unlink(missing_ok=True)
+    except OSError as err:
+        _LOGGER.warning("Could not delete frame %s: %s", path, err)
+
+
+def _crop_box(
+    bbox: list[float], width: int, height: int
+) -> tuple[int, int, int, int] | None:
     """A bbox ``[x1, y1, x2, y2]`` as clamped pixel bounds, padded.
 
-    Values that fit in the unit range are treated as fractions of the frame
-    (some models answer in normalized coordinates). Reversed edges are
-    swapped. Raises ValueError when the box is empty after clamping.
+    The AI is asked for coordinates normalized to ``0..BBOX_SCALE``. Values
+    that fit in the unit range are treated as fractions of the frame (some
+    models answer that way regardless), and values beyond ``BBOX_SCALE`` as
+    pixels. Reversed edges are swapped. Returns None when the box is empty
+    or too small to be a plausible person, so the full frame is kept.
     """
     x1, y1, x2, y2 = (float(value) for value in bbox)
-    if max(x2, y2) <= 1.0 and max(width, height) > 1:
-        x1, x2 = x1 * width, x2 * width
-        y1, y2 = y1 * height, y2 * height
-    x1, x2 = sorted((x1, x2))
-    y1, y2 = sorted((y1, y2))
+    largest = max(x1, y1, x2, y2)
+    if largest <= 1.0:
+        scale_x, scale_y = float(width), float(height)
+    elif largest <= BBOX_SCALE:
+        scale_x, scale_y = width / BBOX_SCALE, height / BBOX_SCALE
+    else:
+        scale_x = scale_y = 1.0
+    x1, x2 = sorted((x1 * scale_x, x2 * scale_x))
+    y1, y2 = sorted((y1 * scale_y, y2 * scale_y))
+    x1, x2 = max(0.0, x1), min(float(width), x2)
+    y1, y2 = max(0.0, y1), min(float(height), y2)
+    if x2 <= x1 or y2 <= y1:
+        return None
+    if (x2 - x1) * (y2 - y1) < THUMBNAIL_MIN_BOX_AREA * width * height:
+        return None
     pad_x = (x2 - x1) * THUMBNAIL_PADDING
     pad_y = (y2 - y1) * THUMBNAIL_PADDING
     left = max(0, int(x1 - pad_x))
     top = max(0, int(y1 - pad_y))
     right = min(width, int(x2 + pad_x))
     bottom = min(height, int(y2 + pad_y))
-    if right <= left or bottom <= top:
-        raise ValueError("empty bounding box")
     return left, top, right, bottom
 
 
@@ -221,7 +271,8 @@ def save_person_thumbnail(
     """Save *content* as *person_name*'s last-seen thumbnail (Issue #3).
 
     The file is one per person, overwritten on every detection. When *bbox*
-    is given, the frame is cropped tight around that box first. A format
+    is given and plausible, the frame is cropped around that box first;
+    otherwise the full frame is kept. A format
     Pillow cannot decode (e.g. HEIC) is kept raw. Does blocking I/O; run it
     in the executor. Raises OSError when the write fails.
     """
@@ -236,7 +287,14 @@ def save_person_thumbnail(
         path.write_bytes(content)
         return path
     if bbox is not None:
-        image = image.crop(_crop_box(bbox, *image.size))
+        if (box := _crop_box(bbox, *image.size)) is not None:
+            image = image.crop(box)
+        else:
+            _LOGGER.debug(
+                "Implausible bbox %s for %s; keeping the full frame.",
+                bbox,
+                person_name,
+            )
     if image.mode not in ("RGB", "L"):
         image = image.convert("RGB")
     path = folder / f"{slug}.jpg"
