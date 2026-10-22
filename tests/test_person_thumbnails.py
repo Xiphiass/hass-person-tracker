@@ -1,0 +1,331 @@
+"""Tests for last-seen person thumbnails (Issue #3): each detection saves
+the person's frame, cropped tight around them, one file per person."""
+
+from __future__ import annotations
+
+import io
+import logging
+from pathlib import Path
+from typing import Any
+from unittest.mock import AsyncMock, patch
+
+import pytest
+from PIL import Image as PILImage
+
+from homeassistant.components.ai_task.task import GenDataTaskResult
+from homeassistant.components.camera import Image
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry as er
+
+from custom_components.person_tracker import const
+from custom_components.person_tracker import detection as detection_module
+from custom_components.person_tracker.helpers import _crop_box
+
+from .conftest import add_camera, entry_data, person, setup_entry
+
+DOMAIN = const.DOMAIN
+TRIGGER = "binary_sensor.front_door_person"
+CAMERA = "camera.front_door"
+
+# A frame with a red "person" block on x=10..40, y=10..50.
+FRAME_SIZE = (100, 100)
+PERSON_BOX = [10.0, 10.0, 40.0, 50.0]
+FAKE_BYTES = b"\xff\xd8\xff\xe0fake-jpeg\xff\xd9"
+
+
+def _make_frame() -> bytes:
+    """A green 100x100 frame with a red 30x40 block at (10, 10)."""
+    frame = PILImage.new("RGB", FRAME_SIZE, (0, 255, 0))
+    frame.paste(PILImage.new("RGB", (30, 40), (255, 0, 0)), (10, 10))
+    buffer = io.BytesIO()
+    frame.save(buffer, format="JPEG", quality=95)
+    return buffer.getvalue()
+
+
+def _ai_result(persons: list[dict[str, Any]]) -> GenDataTaskResult:
+    """A well-formed AI task response for the given person entries."""
+    return GenDataTaskResult(
+        conversation_id="test-conversation",
+        data={"persons": persons, "unknown_persons": 0},
+    )
+
+
+def _mock_ai(result: GenDataTaskResult):
+    """Patch detection's AI call; the result is returned for assertions."""
+    return patch(
+        "custom_components.person_tracker.detection.async_generate_data",
+        new=AsyncMock(return_value=result),
+    )
+
+
+def _mock_image(content: bytes, content_type: str = "image/jpeg"):
+    """Patch detection's snapshot fetch."""
+    return patch(
+        "custom_components.person_tracker.detection.async_get_image",
+        new=AsyncMock(return_value=Image(content_type=content_type, content=content)),
+    )
+
+
+def _tracker_state(hass: HomeAssistant, name: str) -> str:
+    """The current state of the tracker entity of *name*."""
+    entry = hass.config_entries.async_entries(DOMAIN)[0]
+    subentry_ids = {s.title: s.subentry_id for s in entry.subentries.values()}
+    entity_id = er.async_get(hass).async_get_entity_id(
+        "device_tracker", DOMAIN, subentry_ids[name]
+    )
+    assert entity_id is not None
+    state = hass.states.get(entity_id)
+    assert state is not None
+    return state.state
+
+
+def _tracker_attributes(hass: HomeAssistant, name: str) -> dict[str, Any]:
+    """The current state attributes of the tracker entity of *name*."""
+    entry = hass.config_entries.async_entries(DOMAIN)[0]
+    subentry_ids = {s.title: s.subentry_id for s in entry.subentries.values()}
+    entity_id = er.async_get(hass).async_get_entity_id(
+        "device_tracker", DOMAIN, subentry_ids[name]
+    )
+    assert entity_id is not None
+    state = hass.states.get(entity_id)
+    assert state is not None
+    return state.attributes
+
+
+async def _fire_edge(hass: HomeAssistant, trigger: str = TRIGGER) -> None:
+    """Take *trigger* off then on (a detection edge)."""
+    hass.states.async_set(trigger, "off")
+    hass.states.async_set(trigger, "on")
+    await hass.async_block_till_done()
+
+
+@pytest.fixture
+def thumbnails_dir(hass: HomeAssistant, tmp_path: Path) -> Path:
+    """Point the HA config dir at *tmp_path*; return the thumbnails folder."""
+    hass.config.config_dir = str(tmp_path)
+    return tmp_path / DOMAIN / const.THUMBNAILS_DIR
+
+
+def _crop_from_saved(path: Path) -> PILImage.Image:
+    image = PILImage.open(path)
+    image.load()
+    return image
+
+
+def test_crop_box_pads_clamps_and_reorders() -> None:
+    """Boxes are padded, clamped to the frame, and re-ordered if reversed."""
+    assert _crop_box([10, 10, 40, 50], *FRAME_SIZE) == (8, 8, 41, 52)
+    # A full-frame box cannot pad outside the frame.
+    assert _crop_box([0, 0, 100, 100], *FRAME_SIZE) == (0, 0, 100, 100)
+    # Reversed edges are swapped before padding.
+    assert _crop_box([40, 50, 10, 10], *FRAME_SIZE) == (8, 8, 41, 52)
+    with pytest.raises(ValueError):
+        _crop_box([0, 0, 0, 0], *FRAME_SIZE)
+
+
+def test_crop_box_scales_fractional_coordinates() -> None:
+    """Coordinates that fit in the unit range scale to the frame size."""
+    assert _crop_box([0.1, 0.1, 0.4, 0.5], *FRAME_SIZE) == (8, 8, 41, 52)
+
+
+async def test_identified_person_saves_tight_crop(
+    hass: HomeAssistant,
+    default_ai_task: None,
+    thumbnails_dir: Path,
+) -> None:
+    """A detection saves the frame cropped tight around the person's bbox."""
+    add_camera(hass, CAMERA, area_name="Garden")
+    hass.states.async_set(TRIGGER, "off")
+
+    with (
+        _mock_ai(
+            _ai_result([{"name": "Alice", "confidence": 0.9, "bbox": PERSON_BOX}])
+        ),
+        _mock_image(_make_frame()),
+    ):
+        async with setup_entry(
+            hass, entry_data(cooldown_seconds=0), people=[person("Alice")]
+        ):
+            await _fire_edge(hass)
+
+            assert _tracker_state(hass, "Alice") == "Garden"
+            # The attribute is the saved image, relative to the config dir.
+            assert _tracker_attributes(hass, "Alice")[const.ATTR_LAST_THUMBNAIL] == (
+                f"{DOMAIN}/{const.THUMBNAILS_DIR}/alice.jpg"
+            )
+
+            assert thumbnails_dir.is_dir()
+            assert [p.name for p in thumbnails_dir.iterdir()] == ["alice.jpg"]
+            crop = _crop_from_saved(thumbnails_dir / "alice.jpg")
+            # Tight around the person: the 30x40 block plus 5% padding.
+            assert crop.size == (33, 44)
+            # The crop covers the right region: red person, green backdrop.
+            center: Any = crop.getpixel((16, 19))
+            assert center[0] > 180 and center[1] < 80 and center[2] < 80
+            corner: Any = crop.getpixel((0, 0))
+            assert corner[1] > 150 and corner[0] < 80
+
+
+async def test_normalized_bbox_is_scaled_to_the_frame(
+    hass: HomeAssistant,
+    default_ai_task: None,
+    thumbnails_dir: Path,
+) -> None:
+    """A model answering in fractional coordinates crops the same region."""
+    add_camera(hass, CAMERA, area_name="Garden")
+    hass.states.async_set(TRIGGER, "off")
+
+    with (
+        _mock_ai(
+            _ai_result(
+                [{"name": "Alice", "confidence": 0.9, "bbox": [0.1, 0.1, 0.4, 0.5]}]
+            )
+        ),
+        _mock_image(_make_frame()),
+    ):
+        async with setup_entry(
+            hass, entry_data(cooldown_seconds=0), people=[person("Alice")]
+        ):
+            await _fire_edge(hass)
+
+            crop = _crop_from_saved(thumbnails_dir / "alice.jpg")
+            assert crop.size == (33, 44)
+
+
+async def test_missing_bbox_saves_the_full_frame(
+    hass: HomeAssistant,
+    default_ai_task: None,
+    thumbnails_dir: Path,
+) -> None:
+    """No bbox from the AI means the whole snapshot is the thumbnail."""
+    add_camera(hass, CAMERA, area_name="Garden")
+    hass.states.async_set(TRIGGER, "off")
+
+    with (
+        _mock_ai(_ai_result([{"name": "Alice", "confidence": 0.9}])),
+        _mock_image(_make_frame()),
+    ):
+        async with setup_entry(
+            hass, entry_data(cooldown_seconds=0), people=[person("Alice")]
+        ):
+            await _fire_edge(hass)
+
+            assert _tracker_state(hass, "Alice") == "Garden"
+            crop = _crop_from_saved(thumbnails_dir / "alice.jpg")
+            assert crop.size == FRAME_SIZE
+
+
+async def test_undecodable_snapshot_is_saved_raw(
+    hass: HomeAssistant,
+    default_ai_task: None,
+    thumbnails_dir: Path,
+) -> None:
+    """A frame Pillow cannot decode is stored unmodified, still a detection."""
+    add_camera(hass, CAMERA, area_name="Garden")
+    hass.states.async_set(TRIGGER, "off")
+
+    with (
+        _mock_ai(
+            _ai_result([{"name": "Alice", "confidence": 0.9, "bbox": PERSON_BOX}])
+        ),
+        _mock_image(FAKE_BYTES),
+    ):
+        async with setup_entry(
+            hass, entry_data(cooldown_seconds=0), people=[person("Alice")]
+        ):
+            await _fire_edge(hass)
+
+            assert _tracker_state(hass, "Alice") == "Garden"
+            files = list(thumbnails_dir.iterdir())
+            assert len(files) == 1
+            assert files[0].read_bytes() == FAKE_BYTES
+            assert _tracker_attributes(hass, "Alice")[const.ATTR_LAST_THUMBNAIL] == (
+                f"{DOMAIN}/{const.THUMBNAILS_DIR}/{files[0].name}"
+            )
+
+
+async def test_thumbnail_is_overwritten_not_accumulated(
+    hass: HomeAssistant,
+    default_ai_task: None,
+    thumbnails_dir: Path,
+) -> None:
+    """Repeated detections keep one thumbnail per person, the latest."""
+    add_camera(hass, CAMERA, area_name="Garden")
+    hass.states.async_set(TRIGGER, "off")
+
+    with (
+        _mock_ai(
+            _ai_result([{"name": "Alice", "confidence": 0.9, "bbox": PERSON_BOX}])
+        ),
+        _mock_image(_make_frame()),
+    ):
+        async with setup_entry(
+            hass, entry_data(cooldown_seconds=0), people=[person("Alice")]
+        ):
+            await _fire_edge(hass)
+            await _fire_edge(hass)
+
+            assert [p.name for p in thumbnails_dir.iterdir()] == ["alice.jpg"]
+
+
+async def test_thumbnail_write_failure_keeps_state(
+    hass: HomeAssistant,
+    default_ai_task: None,
+    thumbnails_dir: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """An unwritable thumbnail is a warning, not a failed detection run."""
+    add_camera(hass, CAMERA, area_name="Garden")
+    hass.states.async_set(TRIGGER, "off")
+
+    with (
+        _mock_ai(
+            _ai_result([{"name": "Alice", "confidence": 0.9, "bbox": PERSON_BOX}])
+        ),
+        _mock_image(_make_frame()),
+        patch.object(
+            detection_module, "save_person_thumbnail", side_effect=OSError("disk full")
+        ),
+    ):
+        async with setup_entry(
+            hass, entry_data(cooldown_seconds=0), people=[person("Alice")]
+        ):
+            await _fire_edge(hass)
+
+            # The identification itself succeeded.
+            assert _tracker_state(hass, "Alice") == "Garden"
+            assert const.ATTR_LAST_THUMBNAIL not in _tracker_attributes(hass, "Alice")
+            assert any(
+                "Could not save Alice's last-seen thumbnail" in record.message
+                for record in caplog.records
+                if record.levelno == logging.WARNING
+            )
+            assert not any(
+                "Detection run failed" in record.message for record in caplog.records
+            )
+
+
+async def test_invalid_bbox_falls_back_to_full_frame(
+    hass: HomeAssistant,
+    default_ai_task: None,
+    thumbnails_dir: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A bbox the validator rejects means the full frame is saved instead."""
+    add_camera(hass, CAMERA, area_name="Garden")
+    hass.states.async_set(TRIGGER, "off")
+
+    with (
+        _mock_ai(
+            _ai_result([{"name": "Alice", "confidence": 0.9, "bbox": [1.0, 2.0]}])
+        ),
+        _mock_image(_make_frame()),
+    ):
+        async with setup_entry(
+            hass, entry_data(cooldown_seconds=0), people=[person("Alice")]
+        ):
+            await _fire_edge(hass)
+
+            assert _tracker_state(hass, "Alice") == "Garden"
+            crop = _crop_from_saved(thumbnails_dir / "alice.jpg")
+            assert crop.size == FRAME_SIZE

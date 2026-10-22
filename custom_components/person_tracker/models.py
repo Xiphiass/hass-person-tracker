@@ -42,6 +42,10 @@ class Person:
     area_id: str | None = None
     last_seen: datetime | None = None
     last_camera: str | None = None
+    # Saved image of the last detection (Issue #3): path, relative to the
+    # HA config dir, of the per-person thumbnail (the snapshot cropped
+    # tight around the person).
+    last_thumbnail: str | None = None
 
     @property
     def ttl(self) -> timedelta:

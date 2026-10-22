@@ -1,13 +1,15 @@
 """HA-facing helpers: areas, AI task entity resolution, reference images,
-unknown snapshots."""
+last-seen person thumbnails, unknown snapshots."""
 
 from __future__ import annotations
 
+import io
 from datetime import timedelta
 from logging import getLogger
 from mimetypes import guess_extension
 from pathlib import Path
 
+from PIL import Image as PILImage
 from homeassistant.components import ai_task as ai_task_component
 from homeassistant.const import ATTR_RESTORED
 from homeassistant.core import HomeAssistant
@@ -16,7 +18,14 @@ from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from homeassistant.util import dt as dt_util
 
-from .const import DOMAIN, PEOPLE_DIR, REFERENCE_IMAGE_EXTENSIONS, UNKNOWN_SNAPSHOTS_DIR
+from .const import (
+    DOMAIN,
+    PEOPLE_DIR,
+    REFERENCE_IMAGE_EXTENSIONS,
+    THUMBNAIL_PADDING,
+    THUMBNAILS_DIR,
+    UNKNOWN_SNAPSHOTS_DIR,
+)
 from .models import person_slug
 
 _LOGGER = getLogger(__package__)
@@ -142,3 +151,70 @@ def purge_unknown_snapshots(hass: HomeAssistant, max_age: timedelta) -> int:
         except OSError as err:
             _LOGGER.warning("Could not purge unknown snapshot %s: %s", path, err)
     return removed
+
+
+def get_thumbnails_dir(hass: HomeAssistant) -> Path:
+    """Return the last-seen thumbnails folder under the config dir.
+
+    Deliberately separate from the per-person reference-image folders:
+    auto-saved frames must never be re-discovered as reference images
+    (ADR 0005).
+    """
+    return Path(hass.config.path(DOMAIN, THUMBNAILS_DIR))
+
+
+def _crop_box(bbox: list[float], width: int, height: int) -> tuple[int, int, int, int]:
+    """A bbox ``[x1, y1, x2, y2]`` as clamped pixel bounds, padded.
+
+    Values that fit in the unit range are treated as fractions of the frame
+    (some models answer in normalized coordinates). Reversed edges are
+    swapped. Raises ValueError when the box is empty after clamping.
+    """
+    x1, y1, x2, y2 = (float(value) for value in bbox)
+    if max(x2, y2) <= 1.0 and max(width, height) > 1:
+        x1, x2 = x1 * width, x2 * width
+        y1, y2 = y1 * height, y2 * height
+    x1, x2 = sorted((x1, x2))
+    y1, y2 = sorted((y1, y2))
+    pad_x = (x2 - x1) * THUMBNAIL_PADDING
+    pad_y = (y2 - y1) * THUMBNAIL_PADDING
+    left = max(0, int(x1 - pad_x))
+    top = max(0, int(y1 - pad_y))
+    right = min(width, int(x2 + pad_x))
+    bottom = min(height, int(y2 + pad_y))
+    if right <= left or bottom <= top:
+        raise ValueError("empty bounding box")
+    return left, top, right, bottom
+
+
+def save_person_thumbnail(
+    hass: HomeAssistant,
+    person_name: str,
+    content: bytes,
+    content_type: str,
+    bbox: list[float] | None = None,
+) -> Path:
+    """Save *content* as *person_name*'s last-seen thumbnail (Issue #3).
+
+    The file is one per person, overwritten on every detection. When *bbox*
+    is given, the frame is cropped tight around that box first. A format
+    Pillow cannot decode (e.g. HEIC) is kept raw. Does blocking I/O; run it
+    in the executor. Raises OSError when the write fails.
+    """
+    folder = get_thumbnails_dir(hass)
+    folder.mkdir(parents=True, exist_ok=True)
+    slug = person_slug(person_name)
+    try:
+        image = PILImage.open(io.BytesIO(content))
+        image.load()
+    except OSError, ValueError:
+        path = folder / f"{slug}{guess_extension(content_type) or '.jpg'}"
+        path.write_bytes(content)
+        return path
+    if bbox is not None:
+        image = image.crop(_crop_box(bbox, *image.size))
+    if image.mode not in ("RGB", "L"):
+        image = image.convert("RGB")
+    path = folder / f"{slug}.jpg"
+    image.save(path, format="JPEG")
+    return path

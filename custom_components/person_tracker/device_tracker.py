@@ -32,6 +32,7 @@ from .const import (
     ATTR_LAST_CAMERA,
     ATTR_LAST_LOCATION,
     ATTR_LAST_SEEN,
+    ATTR_LAST_THUMBNAIL,
     DOMAIN,
     SIGNAL_TRACKER_UPDATE_PERSON,
 )
@@ -206,4 +207,6 @@ class PersonTrackerEntity(TrackerEntity):
             attributes[ATTR_AREA_ID] = person.area_id
         if person.last_camera is not None:
             attributes[ATTR_LAST_CAMERA] = person.last_camera
+        if person.last_thumbnail is not None:
+            attributes[ATTR_LAST_THUMBNAIL] = person.last_thumbnail
         return attributes or None
