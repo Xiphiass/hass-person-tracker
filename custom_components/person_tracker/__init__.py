@@ -9,8 +9,9 @@ Configuration is a UI config entry (ADR 0005):
   tracker) is a config subentry of the entry.
 
 Reference images live on disk under
-``<config>/person_tracker/people/<person>/`` and are re-discovered on every
-setup and reload (ADR 0005).
+``<config>/person_tracker/people/<person>/`` (ADR 0005). They are re-read on
+every detection run and sent to the AI along with the snapshot, through this
+integration's media source.
 """
 
 from __future__ import annotations
@@ -18,6 +19,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from homeassistant.components.media_source import local_source
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryError, ConfigEntryNotReady
 from homeassistant.helpers import config_validation as cv
@@ -44,6 +46,7 @@ from .helpers import (
     get_person_images_dir,
     is_entity_pending,
 )
+from .media_source import async_get_media_source
 from .models import Camera, Person, PersonTrackerConfigEntry, PersonTrackerData
 from .validation import ai_task_error, camera_error, is_trigger
 
@@ -53,7 +56,9 @@ CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 
 async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
-    """The integration is only set up through config entries."""
+    """Serve the reference images; everything else is set up per entry."""
+    source = await async_get_media_source(hass)
+    hass.http.register_view(local_source.LocalMediaView(hass, source))
     return True
 
 
