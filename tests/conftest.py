@@ -89,6 +89,7 @@ def entry_data(
     cameras: list[dict[str, Any]] | None = None,
     ai_task_entity: str | None = "ai_task.openai",
     cooldown_seconds: int | None = None,
+    min_confidence: float | None = None,
 ) -> dict[str, Any]:
     """Build person_tracker config entry data (the global settings)."""
     data: dict[str, Any] = {
@@ -103,16 +104,24 @@ def entry_data(
     }
     if cooldown_seconds is not None:
         data[const.CONF_COOLDOWN] = cooldown_seconds
+    if min_confidence is not None:
+        data[const.CONF_MIN_CONFIDENCE] = min_confidence
     return data
 
 
 def person(
-    name: str, *, ttl: int = 30, authoritative_tracker: str | None = None
+    name: str,
+    *,
+    ttl: int = 30,
+    authoritative_tracker: str | None = None,
+    description: str | None = None,
 ) -> ConfigSubentryData:
     """Build a person subentry."""
     data: dict[str, Any] = {const.CONF_PERSON_NAME: name, const.CONF_TTL: ttl}
     if authoritative_tracker:
         data[const.CONF_AUTHORITATIVE_TRACKER] = authoritative_tracker
+    if description:
+        data[const.CONF_DESCRIPTION] = description
     return ConfigSubentryData(
         data=data,
         subentry_type=const.SUBENTRY_PERSON,

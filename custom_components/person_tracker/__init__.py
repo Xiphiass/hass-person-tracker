@@ -30,10 +30,13 @@ from .const import (
     CONF_CAMERA,
     CONF_CAMERAS,
     CONF_COOLDOWN,
+    CONF_DESCRIPTION,
+    CONF_MIN_CONFIDENCE,
     CONF_PERSON_NAME,
     CONF_TTL,
     CONF_TRIGGERS,
     DEFAULT_COOLDOWN_SECONDS,
+    DEFAULT_MIN_CONFIDENCE,
     DEFAULT_TTL_MINUTES,
     DOMAIN,
     PLATFORMS,
@@ -129,6 +132,7 @@ async def _async_build_entry_data(
             name=subentry.data[CONF_PERSON_NAME],
             ttl_minutes=subentry.data.get(CONF_TTL, DEFAULT_TTL_MINUTES),
             authoritative_tracker=subentry.data.get(CONF_AUTHORITATIVE_TRACKER),
+            description=subentry.data.get(CONF_DESCRIPTION),
         )
         person.reference_images = await hass.async_add_executor_job(
             discover_reference_images, hass, person.name
@@ -178,4 +182,7 @@ async def _async_build_entry_data(
         people=people,
         cameras=cameras,
         cooldown_seconds=int(entry.data.get(CONF_COOLDOWN, DEFAULT_COOLDOWN_SECONDS)),
+        min_confidence=float(
+            entry.data.get(CONF_MIN_CONFIDENCE, DEFAULT_MIN_CONFIDENCE)
+        ),
     )
