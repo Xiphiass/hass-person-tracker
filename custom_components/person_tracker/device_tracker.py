@@ -18,7 +18,7 @@ from homeassistant.components.device_tracker.entity import TrackerEntity
 from homeassistant.const import STATE_UNKNOWN
 from homeassistant.core import Event, HomeAssistant, callback
 from homeassistant.helpers import area_registry as ar
-from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
+from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.event import (
@@ -32,7 +32,6 @@ from .const import (
     ATTR_LAST_CAMERA,
     ATTR_LAST_LOCATION,
     ATTR_LAST_SEEN,
-    ATTR_LAST_THUMBNAIL,
     DOMAIN,
     SIGNAL_TRACKER_UPDATE_PERSON,
 )
@@ -69,13 +68,9 @@ class PersonTrackerEntity(TrackerEntity):
         self._person = person
         # Keyed by the subentry ID so renaming the person keeps the entity.
         self._attr_unique_id = person.subentry_id
-        self._attr_device_info = (  # pyright: ignore[reportIncompatibleVariableOverride]
-            DeviceInfo(
-                identifiers={(DOMAIN, person.subentry_id)},
-                name=person.name,
-                entry_type=DeviceEntryType.SERVICE,
-            )
-        )
+        self._attr_device_info = (
+            person.device_info
+        )  # pyright: ignore[reportIncompatibleVariableOverride]
         self._unsub_update: Callable[[], None] | None = None
         self._unsub_area: Callable[[], None] | None = None
         self._unsub_authoritative: Callable[[], None] | None = None
@@ -207,6 +202,4 @@ class PersonTrackerEntity(TrackerEntity):
             attributes[ATTR_AREA_ID] = person.area_id
         if person.last_camera is not None:
             attributes[ATTR_LAST_CAMERA] = person.last_camera
-        if person.last_thumbnail is not None:
-            attributes[ATTR_LAST_THUMBNAIL] = person.last_thumbnail
         return attributes or None

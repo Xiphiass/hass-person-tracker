@@ -61,7 +61,12 @@ AI_RESULT_STRUCTURE = probatio.Schema(
             {
                 "name": str,
                 "confidence": float,
-                probatio.Optional("bbox"): [float, float, float, float],
+                # A list with a length check, not a tuple or ExactSequence:
+                # this renders as a plain number array with
+                # minItems/maxItems, which every AI task provider accepts.
+                probatio.Optional("bbox"): probatio.All(
+                    [float], probatio.Length(min=4, max=4)
+                ),
             }
         ],
         "unknown_persons": int,
@@ -317,9 +322,7 @@ class DetectionCoordinator:
             person.area_id = area.id
             person.last_seen = now
             person.last_camera = camera.entity_id
-            person.last_thumbnail = await self._async_save_person_thumbnail(
-                person, image, hit.get("bbox")
-            )
+            await self._async_save_person_thumbnail(person, image, hit.get("bbox"))
             async_dispatcher_send(
                 self._hass, f"{SIGNAL_TRACKER_UPDATE_PERSON}{person.subentry_id}"
             )
@@ -344,13 +347,12 @@ class DetectionCoordinator:
 
     async def _async_save_person_thumbnail(
         self, person: Person, image: Image, bbox: list[float] | None
-    ) -> str | None:
+    ) -> None:
         """Save *image* as *person*'s last-seen thumbnail (Issue #3).
 
-        The frame is cropped tight around *bbox* when the AI gave one.
-        Returns the saved path relative to the config dir, or None when the
-        write failed — a failed write must not break the detection run
-        (Issue #5).
+        The frame is cropped tight around *bbox* when the AI gave one. A
+        failed write keeps the previous thumbnail and must not break the
+        detection run (Issue #5).
         """
         try:
             path = await self._hass.async_add_executor_job(
@@ -365,11 +367,9 @@ class DetectionCoordinator:
             _LOGGER.warning(
                 "Could not save %s's last-seen thumbnail: %s", person.name, err
             )
-            return None
-        try:
-            return str(path.relative_to(self._hass.config.config_dir))
-        except ValueError:
-            return str(path)
+            return
+        person.last_thumbnail = path
+        person.last_thumbnail_updated = dt_util.now()
 
     async def _async_save_unknown_snapshot(
         self, camera: Camera, area: ar.AreaEntry, image: Image

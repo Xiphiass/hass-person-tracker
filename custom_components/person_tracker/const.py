@@ -6,7 +6,7 @@ from homeassistant.const import Platform
 
 DOMAIN = "person_tracker"
 
-PLATFORMS = [Platform.DEVICE_TRACKER]
+PLATFORMS = [Platform.DEVICE_TRACKER, Platform.IMAGE]
 
 # Config entry data keys (global settings).
 CONF_CAMERAS = "cameras"
@@ -93,6 +93,3 @@ ATTR_LAST_SEEN = "last_seen"
 ATTR_LAST_LOCATION = "last_location"
 ATTR_AREA_ID = "area_id"
 ATTR_LAST_CAMERA = "last_camera"
-# The saved image of the person's last detection, as a path relative to
-# the HA config dir (Issue #3).
-ATTR_LAST_THUMBNAIL = "last_thumbnail"

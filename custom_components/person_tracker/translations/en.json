@@ -122,5 +122,12 @@
         "reconfigure_successful": "Re-configuration was successful."
       }
     }
+  },
+  "entity": {
+    "image": {
+      "last_detection": {
+        "name": "Last detection"
+      }
+    }
   }
 }

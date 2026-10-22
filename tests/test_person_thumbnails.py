@@ -1,5 +1,6 @@
 """Tests for last-seen person thumbnails (Issue #3): each detection saves
-the person's frame, cropped tight around them, one file per person."""
+the person's frame, cropped tight around them, one file per person, shown by
+the person's last-detection image entity."""
 
 from __future__ import annotations
 
@@ -14,8 +15,13 @@ from PIL import Image as PILImage
 
 from homeassistant.components.ai_task.task import GenDataTaskResult
 from homeassistant.components.camera import Image
+from homeassistant.components.image import async_get_image as async_get_entity_image
+from homeassistant.const import STATE_UNKNOWN
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
+from homeassistant.util import dt as dt_util
 
 from custom_components.person_tracker import const
 from custom_components.person_tracker import detection as detection_module
@@ -79,17 +85,22 @@ def _tracker_state(hass: HomeAssistant, name: str) -> str:
     return state.state
 
 
-def _tracker_attributes(hass: HomeAssistant, name: str) -> dict[str, Any]:
-    """The current state attributes of the tracker entity of *name*."""
+def _image_entity_id(hass: HomeAssistant, name: str) -> str:
+    """The entity ID of *name*'s last-detection image entity."""
     entry = hass.config_entries.async_entries(DOMAIN)[0]
     subentry_ids = {s.title: s.subentry_id for s in entry.subentries.values()}
     entity_id = er.async_get(hass).async_get_entity_id(
-        "device_tracker", DOMAIN, subentry_ids[name]
+        "image", DOMAIN, f"{subentry_ids[name]}_last_detection"
     )
     assert entity_id is not None
-    state = hass.states.get(entity_id)
+    return entity_id
+
+
+def _image_state(hass: HomeAssistant, name: str) -> str:
+    """The state (last update time) of *name*'s image entity."""
+    state = hass.states.get(_image_entity_id(hass, name))
     assert state is not None
-    return state.attributes
+    return state.state
 
 
 async def _fire_edge(hass: HomeAssistant, trigger: str = TRIGGER) -> None:
@@ -149,10 +160,6 @@ async def test_identified_person_saves_tight_crop(
             await _fire_edge(hass)
 
             assert _tracker_state(hass, "Alice") == "Garden"
-            # The attribute is the saved image, relative to the config dir.
-            assert _tracker_attributes(hass, "Alice")[const.ATTR_LAST_THUMBNAIL] == (
-                f"{DOMAIN}/{const.THUMBNAILS_DIR}/alice.jpg"
-            )
 
             assert thumbnails_dir.is_dir()
             assert [p.name for p in thumbnails_dir.iterdir()] == ["alice.jpg"]
@@ -239,9 +246,8 @@ async def test_undecodable_snapshot_is_saved_raw(
             files = list(thumbnails_dir.iterdir())
             assert len(files) == 1
             assert files[0].read_bytes() == FAKE_BYTES
-            assert _tracker_attributes(hass, "Alice")[const.ATTR_LAST_THUMBNAIL] == (
-                f"{DOMAIN}/{const.THUMBNAILS_DIR}/{files[0].name}"
-            )
+            image = await async_get_entity_image(hass, _image_entity_id(hass, "Alice"))
+            assert image.content == FAKE_BYTES
 
 
 async def test_thumbnail_is_overwritten_not_accumulated(
@@ -294,7 +300,8 @@ async def test_thumbnail_write_failure_keeps_state(
 
             # The identification itself succeeded.
             assert _tracker_state(hass, "Alice") == "Garden"
-            assert const.ATTR_LAST_THUMBNAIL not in _tracker_attributes(hass, "Alice")
+            # No thumbnail was ever saved, so the image entity has none.
+            assert _image_state(hass, "Alice") == STATE_UNKNOWN
             assert any(
                 "Could not save Alice's last-seen thumbnail" in record.message
                 for record in caplog.records
@@ -329,3 +336,111 @@ async def test_invalid_bbox_falls_back_to_full_frame(
             assert _tracker_state(hass, "Alice") == "Garden"
             crop = _crop_from_saved(thumbnails_dir / "alice.jpg")
             assert crop.size == FRAME_SIZE
+
+
+async def test_image_entity_shows_the_last_detection(
+    hass: HomeAssistant,
+    default_ai_task: None,
+    thumbnails_dir: Path,
+) -> None:
+    """The person's image entity serves the saved thumbnail, timestamped."""
+    add_camera(hass, CAMERA, area_name="Garden")
+    hass.states.async_set(TRIGGER, "off")
+
+    with (
+        _mock_ai(
+            _ai_result([{"name": "Alice", "confidence": 0.9, "bbox": PERSON_BOX}])
+        ),
+        _mock_image(_make_frame()),
+    ):
+        async with setup_entry(
+            hass, entry_data(cooldown_seconds=0), people=[person("Alice")]
+        ):
+            entity_id = _image_entity_id(hass, "Alice")
+            # Nothing to show before the first detection.
+            assert _image_state(hass, "Alice") == STATE_UNKNOWN
+            with pytest.raises(HomeAssistantError):
+                await async_get_entity_image(hass, entity_id)
+
+            before = dt_util.now()
+            await _fire_edge(hass)
+
+            updated = dt_util.parse_datetime(_image_state(hass, "Alice"))
+            assert updated is not None and updated >= before
+            image = await async_get_entity_image(hass, entity_id)
+            assert image.content_type == "image/jpeg"
+            assert image.content == (thumbnails_dir / "alice.jpg").read_bytes()
+
+
+async def test_failed_write_keeps_the_previous_image(
+    hass: HomeAssistant,
+    default_ai_task: None,
+    thumbnails_dir: Path,
+) -> None:
+    """A failed thumbnail write leaves the last good image in place."""
+    add_camera(hass, CAMERA, area_name="Garden")
+    hass.states.async_set(TRIGGER, "off")
+
+    with (
+        _mock_ai(
+            _ai_result([{"name": "Alice", "confidence": 0.9, "bbox": PERSON_BOX}])
+        ),
+        _mock_image(_make_frame()),
+    ):
+        async with setup_entry(
+            hass, entry_data(cooldown_seconds=0), people=[person("Alice")]
+        ):
+            await _fire_edge(hass)
+            first = _image_state(hass, "Alice")
+
+            with patch.object(
+                detection_module,
+                "save_person_thumbnail",
+                side_effect=OSError("disk full"),
+            ):
+                await _fire_edge(hass)
+
+            assert _image_state(hass, "Alice") == first
+            image = await async_get_entity_image(hass, _image_entity_id(hass, "Alice"))
+            assert image.content == (thumbnails_dir / "alice.jpg").read_bytes()
+
+
+async def test_image_entity_is_on_the_person_device(
+    hass: HomeAssistant,
+    default_ai_task: None,
+    thumbnails_dir: Path,
+) -> None:
+    """The image entity sits on the same device as the person's tracker."""
+    add_camera(hass, CAMERA, area_name="Garden")
+
+    async with setup_entry(hass, entry_data(), people=[person("Alice")]) as entry:
+        registry = er.async_get(hass)
+        image_entry = registry.async_get(_image_entity_id(hass, "Alice"))
+        (tracker_entry,) = [
+            e
+            for e in er.async_entries_for_config_entry(registry, entry.entry_id)
+            if e.domain == "device_tracker"
+        ]
+        assert image_entry is not None
+        assert image_entry.entity_id == "image.alice_last_detection"
+        assert image_entry.device_id == tracker_entry.device_id
+        device = dr.async_get(hass).async_get(image_entry.device_id or "")
+        assert device is not None and device.name == "Alice"
+
+
+async def test_image_entity_shows_saved_thumbnail_after_restart(
+    hass: HomeAssistant,
+    default_ai_task: None,
+    thumbnails_dir: Path,
+) -> None:
+    """A thumbnail saved before a restart is shown again, with its time."""
+    add_camera(hass, CAMERA, area_name="Garden")
+    thumbnails_dir.mkdir(parents=True)
+    saved = thumbnails_dir / "alice.jpg"
+    saved.write_bytes(_make_frame())
+
+    async with setup_entry(hass, entry_data(), people=[person("Alice")]):
+        updated = dt_util.parse_datetime(_image_state(hass, "Alice"))
+        assert updated == dt_util.utc_from_timestamp(saved.stat().st_mtime)
+        image = await async_get_entity_image(hass, _image_entity_id(hass, "Alice"))
+        assert image.content == saved.read_bytes()
