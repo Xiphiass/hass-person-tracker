@@ -1,7 +1,8 @@
 """Detection loop: trigger snapshot -> AI task identification -> tracker update.
 
 Subscribes to every configured trigger binary sensor. On an OFF -> ON edge,
-the matching camera's snapshot is sent to the configured AI task entity,
+the matching camera's snapshot is saved and sent to the configured AI task
+entity (the very frame that is later cropped into thumbnails),
 together with every person's reference images, and the AI identifies the
 household members in the scene (Issue #3). Reference images are re-read from
 disk on every run, so added or replaced files apply without a reload. Each
@@ -44,15 +45,18 @@ from .const import (
     AI_TASK_INSTRUCTIONS,
     AI_TASK_NAME,
     DOMAIN,
+    FRAMES_DIR,
     PEOPLE_DIR,
     SIGNAL_TRACKER_UPDATE_PERSON,
     UNKNOWN_SNAPSHOT_CLEANUP_HOURS,
     UNKNOWN_SNAPSHOT_RETENTION_DAYS,
 )
 from .helpers import (
+    delete_frame,
     discover_reference_images,
     get_camera_area,
     purge_unknown_snapshots,
+    save_frame,
     save_person_thumbnail,
     save_unknown_snapshot,
 )
@@ -89,7 +93,7 @@ class _PersonHit(TypedDict):
 
 
 def _person_bbox(entry: dict[str, Any]) -> list[float] | None:
-    """A usable ``[x1, y1, x2, y2]`` pixel box from an entry, or None."""
+    """A usable ``[x1, y1, x2, y2]`` box from an entry, or None."""
     raw = entry.get("bbox")
     if (
         isinstance(raw, (list, tuple))
@@ -169,6 +173,11 @@ def unknown_person_count(data: Any) -> int | None:
 def _reference_image_id(person: Person, path: Path) -> str:
     """The media source ID of *person*'s reference image *path*."""
     return f"media-source://{DOMAIN}/{PEOPLE_DIR}/{person.name}/{path.name}"
+
+
+def _frame_id(path: Path) -> str:
+    """The media source ID of the saved AI frame *path*."""
+    return f"media-source://{DOMAIN}/{FRAMES_DIR}/{path.name}"
 
 
 def _build_instructions(data: PersonTrackerData) -> str:
@@ -327,9 +336,20 @@ class DetectionCoordinator:
             _LOGGER.error("Snapshot failed for %s: %s", camera.entity_id, err)
             return False
         await self._async_refresh_reference_images()
-        attachments = [
-            {"media_content_id": f"media-source://camera/{camera.entity_id}"}
-        ]
+        # The AI gets exactly this frame, not a fresh camera fetch: its bbox
+        # must describe the frame the thumbnail is cropped from.
+        try:
+            frame = await self._hass.async_add_executor_job(
+                save_frame,
+                self._hass,
+                camera.entity_id,
+                image.content,
+                image.content_type,
+            )
+        except OSError as err:
+            _LOGGER.error("Could not save frame of %s: %s", camera.entity_id, err)
+            return False
+        attachments = [{"media_content_id": _frame_id(frame)}]
         attachments.extend(
             {"media_content_id": _reference_image_id(person, path)}
             for person in self._data.people.values()
@@ -351,6 +371,8 @@ class DetectionCoordinator:
         except (HomeAssistantError, probatio.error.Error) as err:
             _LOGGER.error("Identification failed for %s: %s", camera.entity_id, err)
             return False
+        finally:
+            await self._hass.async_add_executor_job(delete_frame, frame)
         try:
             hits = validate_ai_response(result.data)
         except ValueError as err:
@@ -401,7 +423,7 @@ class DetectionCoordinator:
     ) -> None:
         """Save *image* as *person*'s last-seen thumbnail (Issue #3).
 
-        The frame is cropped tight around *bbox* when the AI gave one. A
+        The frame is cropped around *bbox* when the AI gave a plausible one. A
         failed write keeps the previous thumbnail and must not break the
         detection run (Issue #5).
         """

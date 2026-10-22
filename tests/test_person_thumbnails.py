@@ -1,5 +1,5 @@
 """Tests for last-seen person thumbnails (Issue #3): each detection saves
-the person's frame, cropped tight around them, one file per person, shown by
+the person's frame, cropped around them, one file per person, shown by
 the person's last-detection image entity."""
 
 from __future__ import annotations
@@ -33,16 +33,17 @@ DOMAIN = const.DOMAIN
 TRIGGER = "binary_sensor.front_door_person"
 CAMERA = "camera.front_door"
 
-# A frame with a red "person" block on x=10..40, y=10..50.
-FRAME_SIZE = (100, 100)
-PERSON_BOX = [10.0, 10.0, 40.0, 50.0]
+# A 200x100 frame with a red "person" block on x=20..80, y=10..50 (pixels),
+# reported by the AI in 0-1000 normalized coordinates.
+FRAME_SIZE = (200, 100)
+PERSON_BOX = [100.0, 100.0, 400.0, 500.0]
 FAKE_BYTES = b"\xff\xd8\xff\xe0fake-jpeg\xff\xd9"
 
 
 def _make_frame() -> bytes:
-    """A green 100x100 frame with a red 30x40 block at (10, 10)."""
+    """A green 200x100 frame with a red 60x40 block at (20, 10)."""
     frame = PILImage.new("RGB", FRAME_SIZE, (0, 255, 0))
-    frame.paste(PILImage.new("RGB", (30, 40), (255, 0, 0)), (10, 10))
+    frame.paste(PILImage.new("RGB", (60, 40), (255, 0, 0)), (20, 10))
     buffer = io.BytesIO()
     frame.save(buffer, format="JPEG", quality=95)
     return buffer.getvalue()
@@ -123,20 +124,33 @@ def _crop_from_saved(path: Path) -> PILImage.Image:
     return image
 
 
-def test_crop_box_pads_clamps_and_reorders() -> None:
-    """Boxes are padded, clamped to the frame, and re-ordered if reversed."""
-    assert _crop_box([10, 10, 40, 50], *FRAME_SIZE) == (8, 8, 41, 52)
+def test_crop_box_scales_normalized_coordinates() -> None:
+    """0-1000 coordinates scale to the frame, padded and clamped."""
+    # 60x40 px box, padded by 15% (9 px, 6 px) on each side.
+    assert _crop_box(PERSON_BOX, *FRAME_SIZE) == (11, 4, 89, 56)
     # A full-frame box cannot pad outside the frame.
-    assert _crop_box([0, 0, 100, 100], *FRAME_SIZE) == (0, 0, 100, 100)
+    assert _crop_box([0, 0, 1000, 1000], *FRAME_SIZE) == (0, 0, 200, 100)
     # Reversed edges are swapped before padding.
-    assert _crop_box([40, 50, 10, 10], *FRAME_SIZE) == (8, 8, 41, 52)
-    with pytest.raises(ValueError):
-        _crop_box([0, 0, 0, 0], *FRAME_SIZE)
+    assert _crop_box([400, 500, 100, 100], *FRAME_SIZE) == (11, 4, 89, 56)
 
 
 def test_crop_box_scales_fractional_coordinates() -> None:
     """Coordinates that fit in the unit range scale to the frame size."""
-    assert _crop_box([0.1, 0.1, 0.4, 0.5], *FRAME_SIZE) == (8, 8, 41, 52)
+    assert _crop_box([0.1, 0.1, 0.4, 0.5], *FRAME_SIZE) == (11, 4, 89, 56)
+
+
+def test_crop_box_takes_large_values_as_pixels() -> None:
+    """Values beyond the 0-1000 scale can only be pixels."""
+    assert _crop_box([1200, 100, 1800, 500], 2000, 1000) == (1110, 40, 1890, 560)
+
+
+def test_crop_box_rejects_implausible_boxes() -> None:
+    """Empty, off-frame or tiny boxes keep the full frame (None)."""
+    assert _crop_box([0, 0, 0, 0], *FRAME_SIZE) is None
+    # Entirely off the frame (pixels beyond its right edge).
+    assert _crop_box([1500, 0, 1800, 50], *FRAME_SIZE) is None
+    # Under 0.5% of the frame's area: 50x50 of 1000x1000 is 0.25%.
+    assert _crop_box([0, 0, 50, 50], *FRAME_SIZE) is None
 
 
 async def test_identified_person_saves_tight_crop(
@@ -164,10 +178,10 @@ async def test_identified_person_saves_tight_crop(
             assert thumbnails_dir.is_dir()
             assert [p.name for p in thumbnails_dir.iterdir()] == ["alice.jpg"]
             crop = _crop_from_saved(thumbnails_dir / "alice.jpg")
-            # Tight around the person: the 30x40 block plus 5% padding.
-            assert crop.size == (33, 44)
+            # Around the person: the 60x40 block plus 15% padding.
+            assert crop.size == (78, 52)
             # The crop covers the right region: red person, green backdrop.
-            center: Any = crop.getpixel((16, 19))
+            center: Any = crop.getpixel((39, 26))
             assert center[0] > 180 and center[1] < 80 and center[2] < 80
             corner: Any = crop.getpixel((0, 0))
             assert corner[1] > 150 and corner[0] < 80
@@ -196,7 +210,7 @@ async def test_normalized_bbox_is_scaled_to_the_frame(
             await _fire_edge(hass)
 
             crop = _crop_from_saved(thumbnails_dir / "alice.jpg")
-            assert crop.size == (33, 44)
+            assert crop.size == (78, 52)
 
 
 async def test_missing_bbox_saves_the_full_frame(
@@ -444,3 +458,28 @@ async def test_image_entity_shows_saved_thumbnail_after_restart(
         assert updated == dt_util.utc_from_timestamp(saved.stat().st_mtime)
         image = await async_get_entity_image(hass, _image_entity_id(hass, "Alice"))
         assert image.content == saved.read_bytes()
+
+
+async def test_implausible_bbox_saves_the_full_frame(
+    hass: HomeAssistant,
+    default_ai_task: None,
+    thumbnails_dir: Path,
+) -> None:
+    """A tiny box is not trusted for a crop; the whole frame is kept."""
+    add_camera(hass, CAMERA, area_name="Garden")
+    hass.states.async_set(TRIGGER, "off")
+
+    with (
+        _mock_ai(
+            _ai_result([{"name": "Alice", "confidence": 0.9, "bbox": [10, 10, 40, 50]}])
+        ),
+        _mock_image(_make_frame()),
+    ):
+        async with setup_entry(
+            hass, entry_data(cooldown_seconds=0), people=[person("Alice")]
+        ):
+            await _fire_edge(hass)
+
+            assert _tracker_state(hass, "Alice") == "Garden"
+            crop = _crop_from_saved(thumbnails_dir / "alice.jpg")
+            assert crop.size == FRAME_SIZE

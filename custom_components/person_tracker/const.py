@@ -65,22 +65,38 @@ AI_TASK_NAME = "identify_persons"
 AI_TASK_INSTRUCTIONS = (
     "Identify which of the listed household members are visible in the "
     'camera snapshot. Respond in JSON: an object with a "persons" list '
-    'containing {"name": string, "confidence": number, "bbox": [x1, y1, '
-    "x2, y2]} objects, one per visible household member, using their exact "
-    'configured names. "bbox" is the pixel bounding box tightly around '
-    "that person: top-left x, top-left y, bottom-right x, bottom-right y. "
+    'containing {"name": string, "confidence": number, "bbox": [x_min, '
+    "y_min, x_max, y_max]} objects, one per visible household member, using "
+    'their exact configured names. "bbox" is the box tightly around that '
+    "person's whole visible body in the camera snapshot, in coordinates "
+    "normalized to 0-1000 regardless of the image's pixel size: x runs from "
+    "0 (left edge) to 1000 (right edge), y from 0 (top edge) to 1000 "
+    "(bottom edge), and the order is x_min, y_min, x_max, y_max. "
     'If no household member is visible, use an empty "persons" list. '
     'Also include "unknown_persons": the number of visible people who '
     "are not listed household members (0 if there are none, or if no one "
     "is visible at all)."
 )
 
+# The scale of the bbox coordinates the AI is asked for (0..BBOX_SCALE on
+# each axis), independent of the frame's pixel size: providers resize
+# images before the model sees them, so pixel coordinates don't map back.
+BBOX_SCALE = 1000
+
+# The frame sent to the AI (Issue #3): saved under <config>/person_tracker/
+# for the duration of the AI call, so the AI sees exactly the frame that is
+# later cropped, and served to the AI Task through the media source.
+FRAMES_DIR = "frames"
+
 # Per-person last-seen thumbnails (Issue #3): the folder under
 # <config>/person_tracker/ holding one cropped image per person (the
-# person's last detection, cropped tight around them), and the fraction
-# of the box size added around each edge of the crop.
+# person's last detection, cropped around them), the fraction of the box
+# size added around each edge of the crop (generous, as AI boxes are
+# approximate), and the smallest box, as a fraction of the frame's area,
+# still trusted for a crop; anything smaller keeps the full frame.
 THUMBNAILS_DIR = "thumbnails"
-THUMBNAIL_PADDING = 0.05
+THUMBNAIL_PADDING = 0.15
+THUMBNAIL_MIN_BOX_AREA = 0.005
 
 # Unknown snapshots (Issue #4): the folder under <config>/person_tracker/,
 # the retention of its files, and the purge cadence.

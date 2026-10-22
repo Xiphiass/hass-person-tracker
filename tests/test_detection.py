@@ -29,6 +29,7 @@ from .conftest import add_camera, entry_data, person, setup_entry
 DOMAIN = const.DOMAIN
 TRIGGER = "binary_sensor.front_door_person"
 CAMERA = "camera.front_door"
+FRAME_PREFIX = f"media-source://{DOMAIN}/frames/front-door_"
 
 
 @pytest.fixture
@@ -119,9 +120,8 @@ async def test_trigger_edge_updates_tracker(
             assert "Alice" in kwargs["instructions"]
             assert const.AI_TASK_INSTRUCTIONS in kwargs["instructions"]
             assert kwargs["structure"] is AI_RESULT_STRUCTURE
-            assert kwargs["attachments"] == [
-                {"media_content_id": f"media-source://camera/{CAMERA}"}
-            ]
+            (attachment,) = kwargs["attachments"]
+            assert attachment["media_content_id"].startswith(FRAME_PREFIX)
 
             assert _tracker_state(hass, "Alice") == "Garden"
             attributes = _tracker_attributes(hass, "Alice")
@@ -258,7 +258,7 @@ async def test_any_trigger_of_the_camera_runs_detection(
 
             ai_task_mock.assert_awaited_once()
             attachment = ai_task_mock.call_args.kwargs["attachments"][0]
-            assert attachment["media_content_id"] == (f"media-source://camera/{CAMERA}")
+            assert attachment["media_content_id"].startswith(FRAME_PREFIX)
 
 
 async def test_camera_without_area_is_skipped(
@@ -526,8 +526,8 @@ async def test_reference_images_are_attached(
             await _fire_edge(hass)
 
             kwargs = ai_task_mock.call_args.kwargs
-            assert kwargs["attachments"] == [
-                {"media_content_id": f"media-source://camera/{CAMERA}"},
+            assert kwargs["attachments"][0]["media_content_id"].startswith(FRAME_PREFIX)
+            assert kwargs["attachments"][1:] == [
                 {"media_content_id": f"media-source://{DOMAIN}/people/Alice/a.jpg"},
                 {"media_content_id": f"media-source://{DOMAIN}/people/Alice/b.png"},
                 {"media_content_id": f"media-source://{DOMAIN}/people/Bob/bob.jpg"},
@@ -561,3 +561,97 @@ async def test_reference_image_resolves_to_local_file(
 
         assert media.path == image
         assert media.mime_type == "image/jpeg"
+
+
+async def test_ai_gets_the_snapshot_that_is_cropped(
+    hass: HomeAssistant, default_ai_task: None, reference_images_dir: Path
+) -> None:
+    """The AI sees exactly the fetched frame, not a fresh camera fetch.
+
+    The frame resolves to a local file while the AI call runs and is
+    deleted afterwards, so its bbox describes the frame that is cropped.
+    """
+    add_camera(hass, CAMERA, area_name="Garden")
+    hass.states.async_set(TRIGGER, "off")
+    snapshot = b"\xff\xd8\xff\xe0the-frame\xff\xd9"
+    seen: dict[str, Any] = {}
+
+    async def _generate(hass: HomeAssistant, **kwargs: Any) -> GenDataTaskResult:
+        media = await media_source.async_resolve_media(
+            hass, kwargs["attachments"][0]["media_content_id"], None
+        )
+        seen["path"] = media.path
+        seen["mime_type"] = media.mime_type
+        seen["content"] = media.path.read_bytes()
+        return _ai_result(["Alice"])
+
+    with (
+        patch(
+            "custom_components.person_tracker.detection.async_generate_data",
+            new=_generate,
+        ),
+        _mock_image(snapshot),
+    ):
+        async with setup_entry(
+            hass, entry_data(cooldown_seconds=0), people=[person("Alice")]
+        ):
+            await _fire_edge(hass)
+
+            assert _tracker_state(hass, "Alice") == "Garden"
+            assert seen["content"] == snapshot
+            assert seen["mime_type"] == "image/jpeg"
+            assert not seen["path"].exists()
+
+
+async def test_frame_is_deleted_when_the_ai_fails(
+    hass: HomeAssistant, default_ai_task: None, reference_images_dir: Path
+) -> None:
+    """A failed AI call still removes the saved frame."""
+    add_camera(hass, CAMERA, area_name="Garden")
+    hass.states.async_set(TRIGGER, "off")
+
+    with (
+        patch(
+            "custom_components.person_tracker.detection.async_generate_data",
+            new=AsyncMock(side_effect=HomeAssistantError("down")),
+        ),
+        _mock_image(),
+    ):
+        async with setup_entry(
+            hass, entry_data(cooldown_seconds=0), people=[person("Alice")]
+        ):
+            await _fire_edge(hass)
+
+            frames = reference_images_dir.parent / const.FRAMES_DIR
+            assert not any(frames.iterdir())
+
+
+async def test_frame_write_failure_skips_run(
+    hass: HomeAssistant,
+    default_ai_task: None,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """An unwritable frame aborts the run before the AI call (Issue #5)."""
+    add_camera(hass, CAMERA, area_name="Garden")
+    hass.states.async_set(TRIGGER, "off")
+
+    with (
+        _mock_ai(_ai_result(["Alice"])) as ai_task_mock,
+        _mock_image(),
+        patch(
+            "custom_components.person_tracker.detection.save_frame",
+            side_effect=OSError("disk full"),
+        ),
+    ):
+        async with setup_entry(
+            hass, entry_data(cooldown_seconds=0), people=[person("Alice")]
+        ):
+            await _fire_edge(hass)
+
+            ai_task_mock.assert_not_awaited()
+            assert _tracker_state(hass, "Alice") == "unknown"
+            assert any(
+                "Could not save frame of" in record.message
+                for record in caplog.records
+                if record.levelno == logging.ERROR
+            )
