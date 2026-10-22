@@ -52,9 +52,10 @@ from .const import (
     ERR_NO_CAMERAS,
     MAX_COOLDOWN_SECONDS,
     MAX_TTL_MINUTES,
+    PEOPLE_DIR,
     SUBENTRY_PERSON,
 )
-from .helpers import get_default_ai_task_entity_id
+from .helpers import get_default_ai_task_entity_id, get_person_images_dir
 from .models import person_slug
 from .validation import (
     ai_task_error,
@@ -399,10 +400,16 @@ class PersonSubentryFlow(ConfigSubentryFlow):
         values: dict[str, Any] | None,
         errors: dict[str, str] | None = None,
     ) -> SubentryFlowResult:
+        if step_id == "reconfigure":
+            name = self._get_reconfigure_subentry().data[CONF_PERSON_NAME]
+            placeholders = {"images_dir": str(get_person_images_dir(self.hass, name))}
+        else:
+            placeholders = {"people_dir": self.hass.config.path(DOMAIN, PEOPLE_DIR)}
         return self.async_show_form(
             step_id=step_id,
             data_schema=self.add_suggested_values_to_schema(_PERSON_SCHEMA, values),
             errors=errors,
+            description_placeholders=placeholders,
         )
 
     async def async_step_user(

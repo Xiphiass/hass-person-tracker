@@ -410,6 +410,9 @@ async def test_add_person(
         result = await _init_person_flow(hass, entry)
         assert result["type"] is FlowResultType.FORM
         assert result["step_id"] == "user"
+        assert result["description_placeholders"] == {
+            "people_dir": hass.config.path(const.DOMAIN, const.PEOPLE_DIR)
+        }
 
         result = await _configure_person(
             hass,
@@ -542,6 +545,9 @@ async def test_reconfigure_person_rename_keeps_entity(
 
         result = await entry.start_subentry_reconfigure_flow(hass, alice_id)
         assert result["step_id"] == "reconfigure"
+        assert result["description_placeholders"] == {
+            "images_dir": hass.config.path(const.DOMAIN, const.PEOPLE_DIR, "Alice")
+        }
         name_key = next(iter(result["data_schema"].schema))
         assert name_key.description == {"suggested_value": "Alice"}
 

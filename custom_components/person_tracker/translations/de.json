@@ -100,7 +100,7 @@
       "step": {
         "user": {
           "title": "Person hinzufügen",
-          "description": "Referenzbilder gehören in <config>/person_tracker/people/<name>/.",
+          "description": "Referenzbilder gehören in einen nach der Person benannten Ordner in {people_dir}.",
           "data": {
             "name": "Name der Person",
             "ttl": "TTL (Minuten)",
@@ -113,7 +113,7 @@
         },
         "reconfigure": {
           "title": "Person bearbeiten",
-          "description": "Wenn du eine Person umbenennst, ändert sich auch ihr Referenzbild-Ordner <config>/person_tracker/people/<name>/; verschiebe die Bilder entsprechend.",
+          "description": "Die Referenzbilder dieser Person liegen in {images_dir}. Wenn du die Person umbenennst, ändert sich auch dieser Ordner; verschiebe die Bilder entsprechend.",
           "data": {
             "name": "Name der Person",
             "ttl": "TTL (Minuten)",

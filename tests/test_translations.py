@@ -41,3 +41,10 @@ def test_translation_matches_english(language: str) -> None:
         assert set(_PLACEHOLDER.findall(translated[key])) == set(
             _PLACEHOLDER.findall(text)
         ), key
+
+
+@pytest.mark.parametrize("language", [p.stem for p in TRANSLATIONS.glob("*.json")])
+def test_translation_has_no_tags(language: str) -> None:
+    """The frontend parses '<...>' as a tag and fails with UNCLOSED_TAG."""
+    for key, text in _load(language).items():
+        assert "<" not in text, key
