@@ -2,6 +2,14 @@
   <img src="custom_components/person_tracker/brand/icon@2x.png" alt="Person Tracker icon" width="128">
 </p>
 
+<p align="center">
+  <a href="https://github.com/Xiphiass/hass-person-tracker/releases"><img src="https://img.shields.io/github/v/release/Xiphiass/hass-person-tracker" alt="Release"></a>
+  <a href="https://github.com/Xiphiass/hass-person-tracker/actions/workflows/ci.yml"><img src="https://github.com/Xiphiass/hass-person-tracker/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://hacs.xyz/docs/faq/custom_repositories/"><img src="https://img.shields.io/badge/HACS-Custom-41BDF5.svg" alt="HACS Custom"></a>
+  <img src="https://img.shields.io/badge/Home%20Assistant-2025.8%2B-18BCF2?logo=homeassistant&logoColor=white" alt="Home Assistant 2025.8+">
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/Xiphiass/hass-person-tracker" alt="License: MIT"></a>
+</p>
+
 # Person Tracker
 
 Tracks household members' locations using camera snapshots and LLM-based identification, as a Home Assistant custom integration.
@@ -46,3 +54,7 @@ The integration is configured entirely through the Home Assistant UI:
 ## Documentation
 
 For more detailed information, see the [ADRs](docs/adr/) in this repository.
+
+## License
+
+[MIT](LICENSE)
