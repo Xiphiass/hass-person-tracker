@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="custom_components/person_tracker/brand/icon@2x.png" alt="Person Tracker icon" width="128">
+</p>
+
 # Person Tracker
 
 Tracks household members' locations using camera snapshots and LLM-based identification, as a Home Assistant custom integration.
@@ -34,7 +38,7 @@ The integration is configured entirely through the Home Assistant UI:
 
 ## Requirements
 
-- Home Assistant Core 2025.8 or later (for AI Task integration support).
+- Home Assistant Core 2025.8 or later (for AI Task integration support). The integration's own icon shows from Home Assistant 2026.3 on, which loads brand images shipped with custom integrations.
 - A configured AI provider integration (e.g., OpenAI, Google Generative AI, Ollama) that exposes AI Task entities.
 - Cameras assigned to Home Assistant areas.
 - Binary sensors to act as detection triggers (e.g., motion or person-detected sensors).
