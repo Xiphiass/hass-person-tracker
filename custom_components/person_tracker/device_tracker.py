@@ -8,7 +8,8 @@ HA person is recorded at home, and "unknown" until the first sighting and
 again once the TTL expires or the authoritative tracker demotes it (ADR
 0004). The room lives in the attributes: ``area`` while the sighting is
 current, ``last_location``/``last_seen`` retained throughout so staleness
-stays queryable.
+stays queryable. The entity picture mirrors the picture of the HA person that
+tracks this entity, so dashboards can show the profile picture.
 """
 
 from __future__ import annotations
@@ -19,7 +20,8 @@ from typing import Any, override
 
 from homeassistant.components.device_tracker import SourceType
 from homeassistant.components.device_tracker.entity import BaseScannerEntity
-from homeassistant.core import Event, HomeAssistant, callback
+from homeassistant.const import ATTR_ENTITY_PICTURE, EVENT_STATE_CHANGED
+from homeassistant.core import Event, EventStateChangedData, HomeAssistant, callback
 from homeassistant.helpers import area_registry as ar
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
@@ -83,6 +85,7 @@ class PersonTrackerEntity(BaseScannerEntity):
         self._unsub_area: Callable[[], None] | None = None
         self._unsub_authoritative: Callable[[], None] | None = None
         self._unsub_ttl: Callable[[], None] | None = None
+        self._unsub_person: Callable[[], None] | None = None
 
     async def async_added_to_hass(self) -> None:
         """Subscribe to all state-affecting sources and start the TTL timer."""
@@ -108,6 +111,15 @@ class PersonTrackerEntity(BaseScannerEntity):
                 self._async_republish,
             )
 
+        # Profile picture: follow any HA person that links (or unlinks) this
+        # tracker or changes its picture.
+        self._unsub_person = self.hass.bus.async_listen(
+            EVENT_STATE_CHANGED,
+            self._async_handle_person_change,
+            event_filter=_is_person_event,
+        )
+        self._attr_entity_picture = self._linked_person_picture()
+
         self._schedule_expiry()
 
     async def async_will_remove_from_hass(self) -> None:
@@ -117,6 +129,7 @@ class PersonTrackerEntity(BaseScannerEntity):
             self._unsub_area,
             self._unsub_authoritative,
             self._unsub_ttl,
+            self._unsub_person,
         ):
             if unsub is not None:
                 unsub()
@@ -124,6 +137,7 @@ class PersonTrackerEntity(BaseScannerEntity):
         self._unsub_area = None
         self._unsub_authoritative = None
         self._unsub_ttl = None
+        self._unsub_person = None
 
     def _schedule_expiry(self) -> None:
         """(Re)schedule the TTL wake-up for the current last_seen.
@@ -161,6 +175,26 @@ class PersonTrackerEntity(BaseScannerEntity):
         """An area registry change; re-publish if it is our area."""
         if event.data.get("area_id") != self._person.area_id:
             return
+        self.async_write_ha_state()
+
+    def _linked_person_picture(self) -> str | None:
+        """The picture of the first HA person tracking this entity, if any."""
+        for state in self.hass.states.async_all("person"):
+            if self.entity_id in state.attributes.get("device_trackers", ()):
+                return state.attributes.get(ATTR_ENTITY_PICTURE)
+        return None
+
+    @callback
+    def _async_handle_person_change(self, _event: Event[EventStateChangedData]) -> None:
+        """A person changed; re-publish only if our picture changed.
+
+        Our own state changes update the linked person too, so writing
+        unconditionally would loop.
+        """
+        picture = self._linked_person_picture()
+        if picture == self._attr_entity_picture:
+            return
+        self._attr_entity_picture = picture
         self.async_write_ha_state()
 
     @callback
@@ -218,3 +252,9 @@ class PersonTrackerEntity(BaseScannerEntity):
         if person.last_camera is not None:
             attributes[ATTR_LAST_CAMERA] = person.last_camera
         return attributes or None
+
+
+@callback
+def _is_person_event(event_data: EventStateChangedData) -> bool:
+    """Whether a state change is for a person entity."""
+    return event_data["entity_id"].startswith("person.")
