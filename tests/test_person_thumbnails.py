@@ -173,7 +173,7 @@ async def test_identified_person_saves_tight_crop(
         ):
             await _fire_edge(hass)
 
-            assert _tracker_state(hass, "Alice") == "Garden"
+            assert _tracker_state(hass, "Alice") == "home"
 
             assert thumbnails_dir.is_dir()
             assert [p.name for p in thumbnails_dir.iterdir()] == ["alice.jpg"]
@@ -231,7 +231,7 @@ async def test_missing_bbox_saves_the_full_frame(
         ):
             await _fire_edge(hass)
 
-            assert _tracker_state(hass, "Alice") == "Garden"
+            assert _tracker_state(hass, "Alice") == "home"
             crop = _crop_from_saved(thumbnails_dir / "alice.jpg")
             assert crop.size == FRAME_SIZE
 
@@ -256,7 +256,7 @@ async def test_undecodable_snapshot_is_saved_raw(
         ):
             await _fire_edge(hass)
 
-            assert _tracker_state(hass, "Alice") == "Garden"
+            assert _tracker_state(hass, "Alice") == "home"
             files = list(thumbnails_dir.iterdir())
             assert len(files) == 1
             assert files[0].read_bytes() == FAKE_BYTES
@@ -313,7 +313,7 @@ async def test_thumbnail_write_failure_keeps_state(
             await _fire_edge(hass)
 
             # The identification itself succeeded.
-            assert _tracker_state(hass, "Alice") == "Garden"
+            assert _tracker_state(hass, "Alice") == "home"
             # No thumbnail was ever saved, so the image entity has none.
             assert _image_state(hass, "Alice") == STATE_UNKNOWN
             assert any(
@@ -347,7 +347,7 @@ async def test_invalid_bbox_falls_back_to_full_frame(
         ):
             await _fire_edge(hass)
 
-            assert _tracker_state(hass, "Alice") == "Garden"
+            assert _tracker_state(hass, "Alice") == "home"
             crop = _crop_from_saved(thumbnails_dir / "alice.jpg")
             assert crop.size == FRAME_SIZE
 
@@ -480,6 +480,6 @@ async def test_implausible_bbox_saves_the_full_frame(
         ):
             await _fire_edge(hass)
 
-            assert _tracker_state(hass, "Alice") == "Garden"
+            assert _tracker_state(hass, "Alice") == "home"
             crop = _crop_from_saved(thumbnails_dir / "alice.jpg")
             assert crop.size == FRAME_SIZE

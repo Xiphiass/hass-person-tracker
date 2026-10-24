@@ -123,7 +123,7 @@ async def test_trigger_edge_updates_tracker(
             (attachment,) = kwargs["attachments"]
             assert attachment["media_content_id"].startswith(FRAME_PREFIX)
 
-            assert _tracker_state(hass, "Alice") == "Garden"
+            assert _tracker_state(hass, "Alice") == "home"
             attributes = _tracker_attributes(hass, "Alice")
             assert attributes[const.ATTR_LAST_LOCATION] == "Garden"
             assert attributes[const.ATTR_LAST_CAMERA] == CAMERA
@@ -155,7 +155,7 @@ async def test_min_confidence_filters_hits(
         ):
             await _fire_edge(hass)
 
-            assert _tracker_state(hass, "Alice") == "Garden"
+            assert _tracker_state(hass, "Alice") == "home"
             assert _tracker_state(hass, "Bob") == "unknown"
 
 
@@ -280,7 +280,7 @@ async def test_person_match_is_case_insensitive(
             await _fire_edge(hass)
 
             ai_task_mock.assert_awaited_once()
-            assert _tracker_state(hass, "Alice") == "Garden"
+            assert _tracker_state(hass, "Alice") == "home"
 
 
 async def test_multiple_people_in_one_run(
@@ -299,8 +299,8 @@ async def test_multiple_people_in_one_run(
             await _fire_edge(hass)
 
             ai_task_mock.assert_awaited_once()
-            assert _tracker_state(hass, "Alice") == "Garden"
-            assert _tracker_state(hass, "Bob") == "Garden"
+            assert _tracker_state(hass, "Alice") == "home"
+            assert _tracker_state(hass, "Bob") == "home"
 
 
 async def test_any_trigger_of_the_camera_runs_detection(
@@ -424,7 +424,7 @@ async def test_ai_error_keeps_state_unknown(
 
             # The next edge runs a fresh, normal detection.
             await _fire_edge(hass)
-            assert _tracker_state(hass, "Alice") == "Garden"
+            assert _tracker_state(hass, "Alice") == "home"
 
 
 async def test_snapshot_failure_skips_run_and_keeps_state(
@@ -461,7 +461,7 @@ async def test_snapshot_failure_skips_run_and_keeps_state(
             with _mock_image():
                 await _fire_edge(hass)
             ai_task_mock.assert_awaited_once()
-            assert _tracker_state(hass, "Alice") == "Garden"
+            assert _tracker_state(hass, "Alice") == "home"
 
 
 async def test_probatio_error_keeps_state_unknown(
@@ -503,7 +503,7 @@ async def test_probatio_error_keeps_state_unknown(
 
             # The next edge runs a fresh, normal detection.
             await _fire_edge(hass)
-            assert _tracker_state(hass, "Alice") == "Garden"
+            assert _tracker_state(hass, "Alice") == "home"
 
 
 @pytest.mark.parametrize(
@@ -571,7 +571,7 @@ async def test_failed_run_does_not_consume_cooldown(
             assert _tracker_state(hass, "Alice") == "unknown"
 
             await _fire_edge(hass)  # inside the cooldown, but runs anyway
-            assert _tracker_state(hass, "Alice") == "Garden"
+            assert _tracker_state(hass, "Alice") == "home"
 
 
 async def test_reference_images_are_attached(
@@ -669,7 +669,7 @@ async def test_ai_gets_the_snapshot_that_is_cropped(
         ):
             await _fire_edge(hass)
 
-            assert _tracker_state(hass, "Alice") == "Garden"
+            assert _tracker_state(hass, "Alice") == "home"
             assert seen["content"] == snapshot
             assert seen["mime_type"] == "image/jpeg"
             assert not seen["path"].exists()

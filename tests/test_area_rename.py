@@ -1,8 +1,7 @@
 """Tests for live area renames (Issue #6 / ADR 0004).
 
-Renaming an HA area must be reflected in the tracker state it refers to,
-without a restart or reconfiguration: the state property resolves the area
-live, and the entity re-publishes on ``EVENT_AREA_REGISTRY_UPDATED``.
+Renaming an HA area must be reflected in the tracker's area attributes,
+without a restart or reconfiguration: the attributes resolve the area live, and the entity re-publishes on ``EVENT_AREA_REGISTRY_UPDATED``.
 """
 
 from __future__ import annotations
@@ -11,8 +10,10 @@ from homeassistant.core import Event, HomeAssistant, callback
 from homeassistant.helpers import area_registry as ar
 from homeassistant.util import dt as dt_util
 
+from custom_components.person_tracker.const import ATTR_AREA, ATTR_LAST_LOCATION
+
 from .conftest import add_camera, person, setup_entry
-from .test_state_lifetime import _sight, _tracker_state
+from .test_state_lifetime import _sight, _tracker_attributes, _tracker_state
 
 
 async def test_area_registry_rename_event(hass: HomeAssistant) -> None:
@@ -37,18 +38,21 @@ async def test_area_registry_rename_event(hass: HomeAssistant) -> None:
     assert registry.async_get_area(area.id).name == "New Name"
 
 
-async def test_tracker_state_reflects_area_rename(
+async def test_tracker_area_reflects_area_rename(
     hass: HomeAssistant, default_ai_task: None
 ) -> None:
-    """Renaming the area a person was last seen in flips the tracker state."""
+    """Renaming the area a person was last seen in updates the attributes."""
     add_camera(hass, "camera.front_door", area_name="Garden")
     garden = ar.async_get(hass).async_get_or_create("Garden")
 
     async with setup_entry(hass, people=[person("Alice")]) as entry:
         _sight(hass, entry, "Alice", dt_util.now(), garden.id)
         await hass.async_block_till_done()
-        assert _tracker_state(hass, "Alice") == "Garden"
+        assert _tracker_state(hass, "Alice") == "home"
+        assert _tracker_attributes(hass, "Alice")[ATTR_AREA] == "Garden"
 
         ar.async_get(hass).async_update(garden.id, name="Garden Party")
         await hass.async_block_till_done()
-        assert _tracker_state(hass, "Alice") == "Garden Party"
+        attrs = _tracker_attributes(hass, "Alice")
+        assert attrs[ATTR_AREA] == "Garden Party"
+        assert attrs[ATTR_LAST_LOCATION] == "Garden Party"

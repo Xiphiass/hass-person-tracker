@@ -2,10 +2,13 @@
 
 One device (entry_type=SERVICE) and one device_tracker entity per known
 person (ADR 0002), both tied to the person's config subentry so removing the
-person removes them. The state is the display name of the HA area the person
-was last seen in, or "unknown" until the first sighting and again once the
-TTL expires (ADR 0004); last_location/last_seen attributes are retained
-throughout so staleness stays queryable.
+person removes them. The entity is a presence (connection) tracker in
+``zone.home``: the state is "home" while a sighting is current, so a linked
+HA person is recorded at home, and "unknown" until the first sighting and
+again once the TTL expires or the authoritative tracker demotes it (ADR
+0004). The room lives in the attributes: ``area`` while the sighting is
+current, ``last_location``/``last_seen`` retained throughout so staleness
+stays queryable.
 """
 
 from __future__ import annotations
@@ -14,8 +17,8 @@ from collections.abc import Callable
 from datetime import datetime, timedelta
 from typing import Any, override
 
-from homeassistant.components.device_tracker.entity import TrackerEntity
-from homeassistant.const import STATE_UNKNOWN
+from homeassistant.components.device_tracker import SourceType
+from homeassistant.components.device_tracker.entity import BaseScannerEntity
 from homeassistant.core import Event, HomeAssistant, callback
 from homeassistant.helpers import area_registry as ar
 from homeassistant.helpers.device_registry import DeviceInfo
@@ -28,6 +31,7 @@ from homeassistant.helpers.event import (
 from homeassistant.util import dt as dt_util
 
 from .const import (
+    ATTR_AREA,
     ATTR_AREA_ID,
     ATTR_LAST_CAMERA,
     ATTR_LAST_LOCATION,
@@ -51,10 +55,14 @@ async def async_setup_entry(
         )
 
 
-class PersonTrackerEntity(TrackerEntity):
+class PersonTrackerEntity(BaseScannerEntity):
     """A device tracker for one known Person."""
 
     _attr_should_poll = False
+    # Cameras are fixed endpoints in the home, like a router or beacon:
+    # presence by "connection" rather than by GPS position, so HA's person
+    # entity reports "home" (and counts the person in zone.home).
+    _attr_source_type = SourceType.ROUTER
     _attr_name = None
     # BaseTrackerEntity annotates `_attr_device_info` as None, but platform
     # classes are expected to override it (see Entity.device_info).
@@ -161,8 +169,9 @@ class PersonTrackerEntity(TrackerEntity):
         self.async_write_ha_state()
 
     @property
-    def state(self) -> str:
-        """The display name of the last seen HA area, or unknown."""
+    @override
+    def is_connected(self) -> bool | None:
+        """True while a sighting is current; None (unknown) otherwise."""
         person = self._person
 
         # 1. Authoritative demotion (ADR 0004): the person's phone says they
@@ -172,32 +181,38 @@ class PersonTrackerEntity(TrackerEntity):
             if tracker_state is not None and authoritative_reports_away(
                 tracker_state.state
             ):
-                return STATE_UNKNOWN
+                return None
 
         # 2. TTL expiry (ADR 0004): no sighting within the person's TTL.
         if is_expired(person.last_seen, person.ttl, dt_util.now()):
-            return STATE_UNKNOWN
+            return None
 
-        # 3. Live area lookup so renames are reflected without restart.
+        return True
+
+    def _area_name(self) -> str | None:
+        """The live display name of the last seen area, so renames show."""
+        person = self._person
         if person.area_id is not None:
             area = ar.async_get(self.hass).async_get_area(person.area_id)
             if area is not None:
                 return area.name
-
-        return person.location or STATE_UNKNOWN
+        return person.location
 
     @property
     @override
     def extra_state_attributes(
         self,
     ) -> dict[str, Any] | None:  # pyright: ignore[reportIncompatibleVariableOverride]
-        """Last seen (timestamp), last location, area ID, last camera."""
+        """Current area, last seen, last location, area ID, last camera."""
         person = self._person
         attributes: dict[str, Any] = {}
+        area_name = self._area_name()
+        if area_name is not None:
+            if self.is_connected:
+                attributes[ATTR_AREA] = area_name
+            attributes[ATTR_LAST_LOCATION] = area_name
         if person.last_seen is not None:
             attributes[ATTR_LAST_SEEN] = person.last_seen.isoformat()
-        if person.location is not None:
-            attributes[ATTR_LAST_LOCATION] = person.location
         if person.area_id is not None:
             attributes[ATTR_AREA_ID] = person.area_id
         if person.last_camera is not None:
