@@ -12,6 +12,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from homeassistant.core import HomeAssistant
+from homeassistant.setup import async_setup_component
 from homeassistant.helpers import area_registry as ar
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.dispatcher import async_dispatcher_send
@@ -20,6 +21,7 @@ from pytest_homeassistant_custom_component.common import async_fire_time_changed
 
 from custom_components.person_tracker import const
 from custom_components.person_tracker.const import (
+    ATTR_AREA,
     ATTR_AREA_ID,
     ATTR_LAST_LOCATION,
     ATTR_LAST_SEEN,
@@ -153,7 +155,7 @@ async def test_ttl_expiry_demotes_to_unknown_and_keeps_attributes(
         seen = dt_util.now()
         _sight(hass, entry, "Alice", seen, garden.id)
         await hass.async_block_till_done()
-        assert _tracker_state(hass, "Alice") == "Garden"
+        assert _tracker_state(hass, "Alice") == "home"
 
         # 29 minutes in: re-evaluation still finds the sighting fresh.
         freezer.move_to(seen + timedelta(minutes=29))
@@ -165,7 +167,7 @@ async def test_ttl_expiry_demotes_to_unknown_and_keeps_attributes(
             garden.id,
         )  # same sighting: re-evaluates without moving last_seen
         await hass.async_block_till_done()
-        assert _tracker_state(hass, "Alice") == "Garden"
+        assert _tracker_state(hass, "Alice") == "home"
 
         # 31 minutes in: the TTL timer fires and the state becomes unknown.
         freezer.move_to(seen + timedelta(minutes=31))
@@ -179,6 +181,9 @@ async def test_ttl_expiry_demotes_to_unknown_and_keeps_attributes(
         assert attrs[ATTR_LAST_LOCATION] == "Garden"
         assert attrs[ATTR_LAST_SEEN] == seen.isoformat()
         assert attrs[ATTR_AREA_ID] == garden.id
+        # The current area is only claimed while the sighting is fresh.
+        assert ATTR_AREA not in attrs
+        assert attrs["in_zones"] == []
 
 
 async def test_new_sighting_resets_the_ttl(
@@ -192,21 +197,21 @@ async def test_new_sighting_resets_the_ttl(
         t0 = dt_util.now()
         _sight(hass, entry, "Alice", t0, garden.id)
         await hass.async_block_till_done()
-        assert _tracker_state(hass, "Alice") == "Garden"
+        assert _tracker_state(hass, "Alice") == "home"
 
         # A sighting 20 minutes in resets the clock.
         freezer.move_to(t0 + timedelta(minutes=20))
         t1 = dt_util.now()
         _sight(hass, entry, "Alice", t1, garden.id)
         await hass.async_block_till_done()
-        assert _tracker_state(hass, "Alice") == "Garden"
+        assert _tracker_state(hass, "Alice") == "home"
 
         # 31 minutes after the first sighting but only 11 after the second:
         # still fresh.
         freezer.move_to(t0 + timedelta(minutes=31))
         async_fire_time_changed(hass, dt_util.now())
         await hass.async_block_till_done()
-        assert _tracker_state(hass, "Alice") == "Garden"
+        assert _tracker_state(hass, "Alice") == "home"
 
         # 31 minutes after the second sighting: expired.
         freezer.move_to(t1 + timedelta(minutes=31))
@@ -229,7 +234,7 @@ async def test_authoritative_tracker_demotes_immediately(
     ) as entry:
         _sight(hass, entry, "Alice", dt_util.now(), garden.id)
         await hass.async_block_till_done()
-        assert _tracker_state(hass, "Alice") == "Garden"
+        assert _tracker_state(hass, "Alice") == "home"
 
         # Away from home per the phone: demoted immediately.
         hass.states.async_set("device_tracker.alice_phone", "not_home")
@@ -246,9 +251,52 @@ async def test_authoritative_tracker_demotes_immediately(
         # Back home: the (still fresh) camera sighting is believed again.
         hass.states.async_set("device_tracker.alice_phone", "home")
         await hass.async_block_till_done()
-        assert _tracker_state(hass, "Alice") == "Garden"
+        assert _tracker_state(hass, "Alice") == "home"
 
         # "unknown" is no report at all, not an away report.
         hass.states.async_set("device_tracker.alice_phone", "unknown")
         await hass.async_block_till_done()
-        assert _tracker_state(hass, "Alice") == "Garden"
+        assert _tracker_state(hass, "Alice") == "home"
+
+
+async def test_linked_person_is_recorded_at_home(
+    hass: HomeAssistant, default_ai_task: None, freezer
+) -> None:
+    """An HA person linked to the camera tracker is home while seen.
+
+    The tracker is a presence tracker in zone.home, so the person entity
+    reports "home" (not the area name) and zone.home counts them.
+    """
+    add_camera(hass, "camera.front_door", area_name="Garden")
+    garden = ar.async_get(hass).async_get_or_create("Garden")
+
+    async with setup_entry(hass, people=[person("Alice")]) as entry:
+        tracker = _tracker_entity(hass, "Alice")
+        assert await async_setup_component(hass, "zone", {})
+        assert await async_setup_component(
+            hass,
+            "person",
+            {
+                "person": [
+                    {"id": "alice", "name": "Alice", "device_trackers": [tracker]}
+                ]
+            },
+        )
+        await hass.async_block_till_done()
+
+        seen = dt_util.now()
+        _sight(hass, entry, "Alice", seen, garden.id)
+        await hass.async_block_till_done()
+
+        attrs = _tracker_attributes(hass, "Alice")
+        assert attrs[ATTR_AREA] == "Garden"
+        assert attrs["in_zones"] == ["zone.home"]
+        assert hass.states.get("person.alice").state == "home"
+        assert hass.states.get("zone.home").state == "1"
+
+        # Once the sighting expires the person no longer counts as home.
+        freezer.move_to(seen + timedelta(minutes=31))
+        async_fire_time_changed(hass, dt_util.now())
+        await hass.async_block_till_done()
+        assert hass.states.get("person.alice").state == "unknown"
+        assert hass.states.get("zone.home").state == "0"

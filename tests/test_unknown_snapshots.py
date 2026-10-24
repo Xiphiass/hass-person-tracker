@@ -223,7 +223,7 @@ async def test_identified_person_does_not_save_snapshot(
             await _fire_edge(hass)
 
             assert _saved_snapshots(unknown_snapshots_dir) == []
-            assert _tracker_state(hass, "Alice") == "Garden"
+            assert _tracker_state(hass, "Alice") == "home"
 
 
 async def test_empty_scene_saves_nothing(
@@ -378,7 +378,7 @@ async def test_malformed_response_saves_nothing_and_keeps_state(
 
             # The next edge runs a fresh, normal detection.
             await _fire_edge(hass)
-            assert _tracker_state(hass, "Alice") == "Garden"
+            assert _tracker_state(hass, "Alice") == "home"
             assert _saved_snapshots(unknown_snapshots_dir) == []
 
 

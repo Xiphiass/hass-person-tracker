@@ -18,6 +18,7 @@ Tracks household members' locations using camera snapshots and LLM-based identif
 
 - **AI-Powered Identification**: Uses Home Assistant's AI Task infrastructure to identify household members from camera snapshots.
 - **Area-Based Tracking**: Automatically maps camera locations to Home Assistant areas.
+- **Works with HA persons**: The tracker reports `home` while a person is seen, so linking it to a Home Assistant person marks them at home. The room they were seen in is in the tracker's `area` attribute (and `last_location`, kept after the sighting goes stale).
 - **Configurable Persistence**: Supports Time-to-Live (TTL) expiry and authoritative tracking (e.g., phone GPS) to manage tracker state reliability.
 - **Unknown Person Support**: Automatically captures and retains snapshots of unidentified individuals for review.
 

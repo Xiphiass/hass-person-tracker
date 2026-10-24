@@ -115,7 +115,9 @@ UNKNOWN_SNAPSHOTS_DIR = "unknown_snapshots"
 UNKNOWN_SNAPSHOT_RETENTION_DAYS = 7
 UNKNOWN_SNAPSHOT_CLEANUP_HOURS = 24
 
-# Extra state attributes exposed on the tracker entities (ADR 0003).
+# Extra state attributes exposed on the tracker entities (ADR 0003). The
+# area is only present while the sighting is current; last_location is kept.
+ATTR_AREA = "area"
 ATTR_LAST_SEEN = "last_seen"
 ATTR_LAST_LOCATION = "last_location"
 ATTR_AREA_ID = "area_id"
