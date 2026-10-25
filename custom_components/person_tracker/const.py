@@ -13,6 +13,7 @@ CONF_CAMERAS = "cameras"
 CONF_AI_TASK_ENTITY = "ai_task_entity"
 CONF_COOLDOWN = "cooldown"
 CONF_MIN_CONFIDENCE = "min_confidence"
+CONF_RECHECK = "recheck"
 
 # Each Person is a config subentry of this type.
 SUBENTRY_PERSON = "person"
@@ -38,6 +39,13 @@ MAX_COOLDOWN_SECONDS = 300
 # Identifications the AI reports with a lower confidence are not trusted: they
 # update no tracker and the snapshot is kept as an unknown snapshot.
 DEFAULT_MIN_CONFIDENCE = 0.7
+# Presence re-check (ADR 0007): shortly before a sighting's TTL runs out, the
+# person's last camera is checked once more, so someone who sits still (and
+# so fires no new trigger edge) stays current. On by default. The re-check
+# runs this long before expiry (capped at half the TTL) to leave room for the
+# AI call, and people of the same camera due within that window share one run.
+DEFAULT_RECHECK = True
+RECHECK_LEAD_SECONDS = 60
 
 # Reference images (ADR 0005): user-placed files under
 # <config>/person_tracker/people/<person>/<file>.
@@ -87,6 +95,17 @@ AI_TASK_INSTRUCTIONS = (
     'Also include "unknown_persons": the number of visible people who '
     "are not listed household members (0 if there are none, or if no one "
     "is visible at all)."
+)
+
+# Presence re-check prompt (ADR 0007), prepended to AI_TASK_INSTRUCTIONS. Only
+# the re-checked people are listed (with their reference photos), so the AI
+# is told explicitly not to force a match onto anyone else in the frame.
+AI_TASK_RECHECK_INSTRUCTIONS = (
+    "This snapshot is a presence re-check: it was taken by the camera that "
+    "last saw the listed household members, to confirm whether they are "
+    "still there. Only report a listed household member who is clearly "
+    "visible now. Anyone else in the snapshot, including people who merely "
+    'resemble a listed household member, counts in "unknown_persons".'
 )
 
 # The scale of the bbox coordinates the AI is asked for (0..BBOX_SCALE on

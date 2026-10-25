@@ -41,5 +41,9 @@ The global threshold (0-1) below which an Identification is not trusted: the Per
 **Authoritative tracker**:
 An optional external device_tracker per Person (e.g. their phone) that outranks the camera tracker: when it reports the Person away, the camera tracker is immediately demoted to unknown.
 
+**Re-check**:
+An Identification run shortly before a Person's sighting expires, on the Person's last camera and asking about that Person only. A confirmation refreshes the sighting; anything else lets it expire (ADR 0007).
+_Avoid_: poll, refresh
+
 **Unknown snapshot**:
 A saved Snapshot in which no known Person was identified. Retained on disk with camera and timestamp metadata; the raw material for future self-learning (out of scope in v1).
