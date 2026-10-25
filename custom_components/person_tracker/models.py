@@ -13,6 +13,7 @@ from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 from .const import (
     DEFAULT_COOLDOWN_SECONDS,
     DEFAULT_MIN_CONFIDENCE,
+    DEFAULT_RECHECK,
     DEFAULT_TTL_MINUTES,
     DOMAIN,
 )
@@ -96,6 +97,9 @@ class PersonTrackerData:
     cooldown_seconds: int = DEFAULT_COOLDOWN_SECONDS
     # Hits the AI reports below this confidence are not trusted.
     min_confidence: float = DEFAULT_MIN_CONFIDENCE
+    # Re-check a sighting on its last camera shortly before the TTL runs out
+    # (ADR 0007).
+    recheck: bool = DEFAULT_RECHECK
     # The detection loop; set during entry setup.
     coordinator: DetectionCoordinator | None = None
 

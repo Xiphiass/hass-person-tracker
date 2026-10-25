@@ -42,11 +42,13 @@ from .const import (
     CONF_DESCRIPTION,
     CONF_MIN_CONFIDENCE,
     CONF_PERSON_NAME,
+    CONF_RECHECK,
     CONF_REMOVE_CAMERAS,
     CONF_TTL,
     CONF_TRIGGERS,
     DEFAULT_COOLDOWN_SECONDS,
     DEFAULT_MIN_CONFIDENCE,
+    DEFAULT_RECHECK,
     DEFAULT_TTL_MINUTES,
     DOMAIN,
     ERR_NO_CAMERAS,
@@ -117,6 +119,7 @@ _DETECTION_SCHEMA = probatio.Schema(
                 min=0, max=1, step=0.05, mode=NumberSelectorMode.SLIDER
             )
         ),
+        probatio.Required(CONF_RECHECK): BooleanSelector(),
     }
 )
 
@@ -249,12 +252,13 @@ class PersonTrackerConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_detection(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Set the detection cooldown and minimum confidence (global settings)."""
+        """Set the cooldown, minimum confidence and re-check (global settings)."""
         errors: dict[str, str] = {}
         if user_input is not None:
             settings = {
                 CONF_COOLDOWN: int(user_input[CONF_COOLDOWN]),
                 CONF_MIN_CONFIDENCE: float(user_input[CONF_MIN_CONFIDENCE]),
+                CONF_RECHECK: bool(user_input[CONF_RECHECK]),
             }
             if self._reconfiguring:
                 return self._save(**settings)
@@ -272,6 +276,7 @@ class PersonTrackerConfigFlow(ConfigFlow, domain=DOMAIN):
             CONF_MIN_CONFIDENCE: stored.get(
                 CONF_MIN_CONFIDENCE, DEFAULT_MIN_CONFIDENCE
             ),
+            CONF_RECHECK: stored.get(CONF_RECHECK, DEFAULT_RECHECK),
         }
         return self.async_show_form(
             step_id="detection",

@@ -33,10 +33,12 @@ from .const import (
     CONF_DESCRIPTION,
     CONF_MIN_CONFIDENCE,
     CONF_PERSON_NAME,
+    CONF_RECHECK,
     CONF_TTL,
     CONF_TRIGGERS,
     DEFAULT_COOLDOWN_SECONDS,
     DEFAULT_MIN_CONFIDENCE,
+    DEFAULT_RECHECK,
     DEFAULT_TTL_MINUTES,
     DOMAIN,
     PLATFORMS,
@@ -185,4 +187,5 @@ async def _async_build_entry_data(
         min_confidence=float(
             entry.data.get(CONF_MIN_CONFIDENCE, DEFAULT_MIN_CONFIDENCE)
         ),
+        recheck=bool(entry.data.get(CONF_RECHECK, DEFAULT_RECHECK)),
     )

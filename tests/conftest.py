@@ -90,6 +90,7 @@ def entry_data(
     ai_task_entity: str | None = "ai_task.openai",
     cooldown_seconds: int | None = None,
     min_confidence: float | None = None,
+    recheck: bool | None = None,
 ) -> dict[str, Any]:
     """Build person_tracker config entry data (the global settings)."""
     data: dict[str, Any] = {
@@ -106,6 +107,8 @@ def entry_data(
         data[const.CONF_COOLDOWN] = cooldown_seconds
     if min_confidence is not None:
         data[const.CONF_MIN_CONFIDENCE] = min_confidence
+    if recheck is not None:
+        data[const.CONF_RECHECK] = recheck
     return data
 
 

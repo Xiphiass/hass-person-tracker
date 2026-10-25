@@ -36,10 +36,12 @@
         "description": "How long to wait between detection runs on the same camera, and how confident the AI must be before a person is considered identified.",
         "data": {
           "cooldown": "Cooldown (seconds)",
-          "min_confidence": "Minimum confidence"
+          "min_confidence": "Minimum confidence",
+          "recheck": "Re-check before expiry"
         },
         "data_description": {
-          "min_confidence": "Identifications below this confidence (0-1) update no tracker; the snapshot is kept as an unknown snapshot instead. Raise it if people get mixed up."
+          "min_confidence": "Identifications below this confidence (0-1) update no tracker; the snapshot is kept as an unknown snapshot instead. Raise it if people get mixed up.",
+          "recheck": "Shortly before a person's sighting expires, take one more snapshot from the camera that last saw them and ask the AI whether they are still there. Keeps people who sit still (and so trigger no new detection) at home, at the cost of one AI call per expiry."
         }
       },
       "reconfigure": {
