@@ -16,6 +16,13 @@ Agreement
 ---------
 ``supporting_agrees`` compares the supporting location with the current
 camera sighting: the same area, only the same floor, or neither.
+
+Corroboration
+-------------
+``boosted_confidence`` raises an Identification hit's confidence when the
+camera's area agrees with the supporting tracker (ADR 0009): the area boost
+for the same area, else the floor boost for the same floor. Boosts never add
+up, never lower the confidence and are capped at 1.0.
 """
 
 from __future__ import annotations
@@ -25,6 +32,8 @@ from dataclasses import dataclass
 from typing import Any
 
 from homeassistant.const import STATE_NOT_HOME, STATE_UNAVAILABLE, STATE_UNKNOWN
+
+from .const import SUPPORTING_AREA_BOOST, SUPPORTING_FLOOR_BOOST
 
 AGREES_AREA = "area"
 AGREES_FLOOR = "floor"
@@ -93,3 +102,30 @@ def supporting_agrees(
     if supporting_floor_id is not None and supporting_floor_id == camera_floor_id:
         return AGREES_FLOOR
     return AGREES_NONE
+
+
+def boosted_confidence(
+    confidence: float,
+    camera_area_id: str,
+    camera_floor_id: str | None,
+    supporting_area_id: str | None,
+    supporting_floor_id: str | None,
+) -> float:
+    """*confidence* of a hit on a camera in *camera_area_id*, corroborated.
+
+    The area boost when the supporting area is the camera's area, else the
+    floor boost when the supporting floor is the camera area's floor, capped
+    at 1.0; unchanged otherwise, and never lowered.
+    """
+    boost = {
+        AGREES_AREA: SUPPORTING_AREA_BOOST,
+        AGREES_FLOOR: SUPPORTING_FLOOR_BOOST,
+    }.get(
+        supporting_agrees(
+            camera_area_id, camera_floor_id, supporting_area_id, supporting_floor_id
+        ),
+        0.0,
+    )
+    if not boost:
+        return confidence
+    return max(confidence, min(1.0, confidence + boost))

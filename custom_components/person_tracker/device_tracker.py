@@ -61,6 +61,7 @@ from .const import (
     SIGNAL_TRACKER_UPDATE_PERSON,
     SUPPORTING_SETTLE_SECONDS,
 )
+from .helpers import get_supporting_location
 from .lifetime import (
     SOURCE_CAMERA,
     SOURCE_SUPPORTING,
@@ -70,7 +71,7 @@ from .lifetime import (
     supporting_moved,
 )
 from .models import Person, PersonTrackerConfigEntry
-from .supporting import AreaOrFloor, resolve_area_or_floor, supporting_agrees
+from .supporting import supporting_agrees
 
 
 async def async_setup_entry(
@@ -375,50 +376,9 @@ class PersonTrackerEntity(BaseScannerEntity):
             if entity_id
         ]
 
-    def _resolve_supporting(
-        self, entity_id: str | None, attribute: str, candidates: list[AreaOrFloor]
-    ) -> str | None:
-        """The ID of the area or floor *entity_id*'s state names, if any."""
-        if entity_id is None or (state := self.hass.states.get(entity_id)) is None:
-            return None
-        return resolve_area_or_floor(
-            state.state, state.attributes.get(attribute), candidates
-        )
-
     def _supporting(self) -> tuple[ar.AreaEntry | None, fr.FloorEntry | None]:
-        """The live supporting area and floor (ADR 0008).
-
-        Without a floor entity, the floor is the supporting area's floor.
-        """
-        person = self._person
-        area_registry = ar.async_get(self.hass)
-        floor_registry = fr.async_get(self.hass)
-        area = None
-        area_id = self._resolve_supporting(
-            person.supporting_area_entity,
-            "area_id",
-            [
-                AreaOrFloor(entry.id, entry.name, frozenset(entry.aliases))
-                for entry in area_registry.async_list_areas()
-            ],
-        )
-        if area_id is not None:
-            area = area_registry.async_get_area(area_id)
-        if person.supporting_floor_entity:
-            floor_id = self._resolve_supporting(
-                person.supporting_floor_entity,
-                "floor_id",
-                [
-                    AreaOrFloor(entry.floor_id, entry.name, frozenset(entry.aliases))
-                    for entry in floor_registry.async_list_floors()
-                ],
-            )
-        else:
-            floor_id = area.floor_id if area is not None else None
-        floor = None
-        if floor_id is not None:
-            floor = floor_registry.async_get_floor(floor_id)
-        return area, floor
+        """The live supporting area and floor (ADR 0008)."""
+        return get_supporting_location(self.hass, self._person)
 
     def _supporting_attributes(
         self,
