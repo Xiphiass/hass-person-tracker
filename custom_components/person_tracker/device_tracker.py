@@ -342,7 +342,7 @@ class PersonTrackerEntity(BaseScannerEntity):
             authoritative_away=away,
             camera_current=camera_current,
             has_supporting_area=supporting_area is not None,
-            supporting_moved=moved,
+            supporting_move_settled=moved,
         )
 
     def _area_name(self) -> str | None:

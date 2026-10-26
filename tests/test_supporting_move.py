@@ -90,7 +90,7 @@ def test_settled_move_outranks_a_current_sighting() -> None:
             authoritative_away=False,
             camera_current=True,
             has_supporting_area=True,
-            supporting_moved=True,
+            supporting_move_settled=True,
         )
         == SOURCE_SUPPORTING
     )
@@ -99,7 +99,7 @@ def test_settled_move_outranks_a_current_sighting() -> None:
             authoritative_away=True,
             camera_current=True,
             has_supporting_area=True,
-            supporting_moved=True,
+            supporting_move_settled=True,
         )
         is None
     )
@@ -115,7 +115,7 @@ async def _at(hass: HomeAssistant, freezer, when: datetime) -> None:
 async def test_settled_move_overrides_the_current_sighting(
     hass: HomeAssistant, default_ai_task: None, freezer
 ) -> None:
-    """Seen in the garden, BLE moves to the bedroom and holds: bedroom."""
+    """Seen in the garden, supporting area moves to the bedroom and holds."""
     areas = _house(hass)
     hass.states.async_set(AREA_ENTITY, "Garden")
     async with setup_entry(
@@ -153,7 +153,7 @@ async def test_settled_move_overrides_the_current_sighting(
 async def test_flap_back_within_the_settle_period_keeps_the_camera(
     hass: HomeAssistant, default_ai_task: None, freezer
 ) -> None:
-    """BLE briefly reports the bedroom, then the garden again: camera leads."""
+    """Supporting area flaps to the bedroom and back: the camera leads."""
     areas = _house(hass)
     hass.states.async_set(AREA_ENTITY, "Garden")
     async with setup_entry(
@@ -195,10 +195,31 @@ async def test_further_change_restarts_the_settle_period(
         assert attrs[ATTR_AREA] == "Kitchen"
 
 
+async def test_sighting_during_the_settle_period_keeps_the_camera(
+    hass: HomeAssistant, default_ai_task: None, freezer
+) -> None:
+    """A camera sighting before the move settles: the camera keeps leading."""
+    areas = _house(hass)
+    hass.states.async_set(AREA_ENTITY, "Garden")
+    async with setup_entry(
+        hass, people=[person("Alice", supporting_area_entity=AREA_ENTITY)]
+    ) as entry:
+        seen = dt_util.now()
+        _sight(hass, entry, "Alice", seen, areas["Garden"].id)
+        await _at(hass, freezer, seen + timedelta(minutes=1))
+        hass.states.async_set(AREA_ENTITY, "Bedroom")
+        await _at(hass, freezer, seen + timedelta(minutes=2))
+        _sight(hass, entry, "Alice", dt_util.now(), areas["Garden"].id)
+        await _at(hass, freezer, seen + timedelta(minutes=10))
+        attrs = _tracker_attributes(hass, "Alice")
+        assert attrs[ATTR_SOURCE] == SOURCE_CAMERA
+        assert attrs[ATTR_AREA] == "Garden"
+
+
 async def test_supporting_disagreeing_before_the_sighting_is_overruled(
     hass: HomeAssistant, default_ai_task: None, freezer
 ) -> None:
-    """BLE says bedroom since before the camera sighting in the garden."""
+    """Supporting area in the bedroom since before the garden sighting."""
     areas = _house(hass)
     hass.states.async_set(AREA_ENTITY, "Bedroom")
     async with setup_entry(

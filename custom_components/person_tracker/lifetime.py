@@ -94,18 +94,18 @@ def leading_source(
     authoritative_away: bool,
     camera_current: bool,
     has_supporting_area: bool,
-    supporting_moved: bool = False,
+    supporting_move_settled: bool = False,
 ) -> str | None:
     """Which source places the person at home, if any.
 
-    ``camera`` while the camera sighting is current and the supporting
-    tracker has not *supporting_moved*, else ``supporting`` while the
+    ``camera`` while the camera sighting is current and no supporting move
+    has settled since (*supporting_move_settled*), else ``supporting`` while the
     supporting tracker resolves to an area, else None (unknown). None
     whenever the authoritative tracker reports the person away.
     """
     if authoritative_away:
         return None
-    if camera_current and not supporting_moved:
+    if camera_current and not supporting_move_settled:
         return SOURCE_CAMERA
     if has_supporting_area:
         return SOURCE_SUPPORTING
