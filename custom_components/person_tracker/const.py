@@ -59,6 +59,8 @@ SUPPORTING_SETTLE_SECONDS = 120
 # area with cameras, and no camera has confirmed it, those cameras are asked
 # about the moved person. On by default.
 DEFAULT_MOVE_CHECK = True
+# Moves into the same area that settle within this window share one run.
+MOVE_CHECK_GROUP_SECONDS = 10
 # Supporting tracker corroboration (Issue #32 / ADR 0009): after
 # Identification, a hit on a camera in the supporting area gains the area
 # boost, else one on the supporting floor gains the floor boost, before the

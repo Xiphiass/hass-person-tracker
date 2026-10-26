@@ -14,7 +14,7 @@ from uuid import uuid4
 from PIL import Image as PILImage
 from homeassistant.components import ai_task as ai_task_component
 from homeassistant.const import ATTR_RESTORED
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, State
 from homeassistant.helpers import area_registry as ar
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
@@ -85,6 +85,24 @@ def _resolve_supporting(
     )
 
 
+def resolve_supporting_area(
+    hass: HomeAssistant, state: State | None
+) -> ar.AreaEntry | None:
+    """The HA area a supporting area entity's *state* names, if any."""
+    if state is None:
+        return None
+    registry = ar.async_get(hass)
+    area_id = resolve_area_or_floor(
+        state.state,
+        state.attributes.get("area_id"),
+        [
+            AreaOrFloor(entry.id, entry.name, frozenset(entry.aliases))
+            for entry in registry.async_list_areas()
+        ],
+    )
+    return registry.async_get_area(area_id) if area_id is not None else None
+
+
 def get_supporting_location(
     hass: HomeAssistant, person: Person
 ) -> tuple[ar.AreaEntry | None, fr.FloorEntry | None]:
@@ -92,20 +110,12 @@ def get_supporting_location(
 
     Without a floor entity, the floor is the supporting area's floor.
     """
-    area_registry = ar.async_get(hass)
     floor_registry = fr.async_get(hass)
     area = None
-    area_id = _resolve_supporting(
-        hass,
-        person.supporting_area_entity,
-        "area_id",
-        [
-            AreaOrFloor(entry.id, entry.name, frozenset(entry.aliases))
-            for entry in area_registry.async_list_areas()
-        ],
-    )
-    if area_id is not None:
-        area = area_registry.async_get_area(area_id)
+    if person.supporting_area_entity:
+        area = resolve_supporting_area(
+            hass, hass.states.get(person.supporting_area_entity)
+        )
     if person.supporting_floor_entity:
         floor_id = _resolve_supporting(
             hass,
@@ -145,8 +155,9 @@ def get_leading_source(
 ) -> str | None:
     """Which source places *person* at home (ADR 0008), as of now.
 
-    The rule is ``lifetime.leading_source``; the tracker entity and the
-    re-check (Issue #33) both ask here, so they can't disagree.
+    The rule is ``lifetime.leading_source``; the tracker entity, the
+    re-check (Issue #33) and the move check (Issue #34) all ask here, so
+    they can't disagree.
     """
     now = dt_util.now()
     return leading_source(

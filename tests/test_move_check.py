@@ -8,7 +8,7 @@ the moved Person (ADR 0008). Uses the harness time mocking (``freezer`` +
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -73,7 +73,9 @@ def _nobody_known() -> GenDataTaskResult:
     )
 
 
-async def _settle_move(hass: HomeAssistant, freezer, area: str, *entities: str):
+async def _settle_move(
+    hass: HomeAssistant, freezer, area: str, *entities: str
+) -> datetime:
     """Move the supporting *entities* to *area* and wait out the settle period.
 
     Returns when the move happened.
@@ -377,3 +379,82 @@ async def test_no_move_check(
                 _add_reference(reference_images_dir, "Alice")
             await _settle_move(hass, freezer, area)
             assert ai_mock.await_count == 0
+
+
+async def test_moves_a_few_seconds_apart_share_one_run(
+    hass: HomeAssistant, default_ai_task: None, reference_images_dir: Path, freezer
+) -> None:
+    """Bob arrives five seconds after Alice: still one run about both."""
+    _house(hass)
+    hass.states.async_set(TRIGGER, "off")
+    hass.states.async_set(AREA_ENTITY, "Bedroom")
+    hass.states.async_set(BOB_AREA_ENTITY, "Kitchen")
+
+    with _mock_ai(_ai_result(["Alice", "Bob"])) as ai_mock, _mock_image():
+        async with setup_entry(
+            hass,
+            entry_data(cooldown_seconds=30),
+            people=[
+                person("Alice", supporting_area_entity=AREA_ENTITY),
+                person("Bob", supporting_area_entity=BOB_AREA_ENTITY),
+            ],
+        ):
+            _add_reference(reference_images_dir, "Alice")
+            _add_reference(reference_images_dir, "Bob")
+            moved = dt_util.now()
+            hass.states.async_set(AREA_ENTITY, "Garden")
+            await _move_to(hass, freezer, moved + timedelta(seconds=5))
+            hass.states.async_set(BOB_AREA_ENTITY, "Garden")
+            await _move_to(hass, freezer, moved + SETTLE)
+            await _move_to(hass, freezer, moved + SETTLE + timedelta(seconds=5))
+            assert ai_mock.await_count == 1
+            for name in ("Alice", "Bob"):
+                assert _tracker_attributes(hass, name)[ATTR_SOURCE] == "camera"
+
+
+async def test_supporting_dropout_is_no_move(
+    hass: HomeAssistant, default_ai_task: None, reference_images_dir: Path, freezer
+) -> None:
+    """Garden, briefly unavailable, Garden again: Alice never moved."""
+    _house(hass)
+    hass.states.async_set(TRIGGER, "off")
+    hass.states.async_set(AREA_ENTITY, "Garden")
+    # Settled in the Garden long before setup.
+    await _move_to(hass, freezer, dt_util.now() + SETTLE * 2)
+
+    with _mock_ai(_ai_result(["Alice"])) as ai_mock, _mock_image():
+        async with setup_entry(
+            hass,
+            entry_data(cooldown_seconds=30),
+            people=[person("Alice", supporting_area_entity=AREA_ENTITY)],
+        ):
+            _add_reference(reference_images_dir, "Alice")
+            hass.states.async_set(AREA_ENTITY, "unavailable")
+            await hass.async_block_till_done()
+            await _settle_move(hass, freezer, "Garden")
+            assert ai_mock.await_count == 0
+
+
+async def test_move_pending_across_a_reload_is_checked(
+    hass: HomeAssistant, default_ai_task: None, reference_images_dir: Path, freezer
+) -> None:
+    """The entry reloads mid-settle: the move is still checked once."""
+    _house(hass)
+    hass.states.async_set(TRIGGER, "off")
+    hass.states.async_set(AREA_ENTITY, "Bedroom")
+
+    with _mock_ai(_ai_result(["Alice"])) as ai_mock, _mock_image():
+        async with setup_entry(
+            hass,
+            entry_data(cooldown_seconds=30),
+            people=[person("Alice", supporting_area_entity=AREA_ENTITY)],
+        ) as entry:
+            _add_reference(reference_images_dir, "Alice")
+            moved = dt_util.now()
+            hass.states.async_set(AREA_ENTITY, "Garden")
+            await _move_to(hass, freezer, moved + timedelta(seconds=30))
+            assert await hass.config_entries.async_reload(entry.entry_id)
+            await hass.async_block_till_done()
+
+            await _move_to(hass, freezer, moved + SETTLE)
+            assert ai_mock.await_count == 1

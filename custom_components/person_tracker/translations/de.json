@@ -38,7 +38,7 @@
           "cooldown": "Pausenzeit (Sekunden)",
           "min_confidence": "Mindest-Konfidenz",
           "recheck": "Vor Ablauf erneut prüfen",
-          "move_check": "Nach einem unterstützten Raumwechsel prüfen"
+          "move_check": "Raumwechsel des unterstützenden Trackers prüfen"
         },
         "data_description": {
           "min_confidence": "Erkennungen unter dieser Konfidenz (0-1) aktualisieren keinen Tracker; der Schnappschuss wird stattdessen als unbekannter Schnappschuss gespeichert. Erhöhe den Wert, wenn Personen verwechselt werden.",

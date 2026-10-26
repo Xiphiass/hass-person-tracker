@@ -38,7 +38,7 @@
           "cooldown": "Cooldown (seconds)",
           "min_confidence": "Minimum confidence",
           "recheck": "Re-check before expiry",
-          "move_check": "Move check after a supporting move"
+          "move_check": "Move check after a supporting tracker move"
         },
         "data_description": {
           "min_confidence": "Identifications below this confidence (0-1) update no tracker; the snapshot is kept as an unknown snapshot instead. Raise it if people get mixed up.",
