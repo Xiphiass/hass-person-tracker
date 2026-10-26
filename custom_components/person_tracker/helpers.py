@@ -1,6 +1,6 @@
-"""HA-facing helpers: areas, the supporting location, AI task entity
-resolution, reference images, AI frames, last-seen person thumbnails,
-unknown snapshots."""
+"""HA-facing helpers: areas, the supporting location, the leading source,
+AI task entity resolution, reference images, AI frames, last-seen person
+thumbnails, unknown snapshots."""
 
 from __future__ import annotations
 
@@ -27,10 +27,17 @@ from .const import (
     FRAMES_DIR,
     PEOPLE_DIR,
     REFERENCE_IMAGE_EXTENSIONS,
+    SUPPORTING_SETTLE_SECONDS,
     THUMBNAIL_MIN_BOX_AREA,
     THUMBNAIL_PADDING,
     THUMBNAILS_DIR,
     UNKNOWN_SNAPSHOTS_DIR,
+)
+from .lifetime import (
+    authoritative_reports_away,
+    is_expired,
+    leading_source,
+    supporting_moved,
 )
 from .models import Person, person_slug
 from .supporting import AreaOrFloor, resolve_area_or_floor
@@ -115,6 +122,49 @@ def get_supporting_location(
     if floor_id is not None:
         floor = floor_registry.async_get_floor(floor_id)
     return area, floor
+
+
+def get_supporting_changed(hass: HomeAssistant, person: Person) -> datetime | None:
+    """When *person*'s supporting area entity last changed state, if known."""
+    entity_id = person.supporting_area_entity
+    if not entity_id or (state := hass.states.get(entity_id)) is None:
+        return None
+    return state.last_changed
+
+
+def reports_away(hass: HomeAssistant, person: Person) -> bool:
+    """Whether *person*'s authoritative tracker reports them away."""
+    if not person.authoritative_tracker:
+        return False
+    state = hass.states.get(person.authoritative_tracker)
+    return state is not None and authoritative_reports_away(state.state)
+
+
+def get_leading_source(
+    hass: HomeAssistant, person: Person, supporting_area: ar.AreaEntry | None
+) -> str | None:
+    """Which source places *person* at home (ADR 0008), as of now.
+
+    The rule is ``lifetime.leading_source``; the tracker entity and the
+    re-check (Issue #33) both ask here, so they can't disagree.
+    """
+    now = dt_util.now()
+    return leading_source(
+        # Authoritative demotion (ADR 0004).
+        authoritative_away=reports_away(hass, person),
+        # TTL expiry (ADR 0004): no camera sighting within the person's TTL.
+        camera_current=not is_expired(person.last_seen, person.ttl, now),
+        has_supporting_area=supporting_area is not None,
+        # A settled move the cameras did not see (Issue #31).
+        supporting_move_settled=supporting_moved(
+            last_seen=person.last_seen,
+            camera_area_id=person.area_id,
+            supporting_area_id=supporting_area.id if supporting_area else None,
+            supporting_changed=get_supporting_changed(hass, person),
+            settle=timedelta(seconds=SUPPORTING_SETTLE_SECONDS),
+            now=now,
+        ),
+    )
 
 
 def is_entity_pending(hass: HomeAssistant, entity_id: str) -> bool:

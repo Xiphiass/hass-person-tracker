@@ -61,15 +61,12 @@ from .const import (
     SIGNAL_TRACKER_UPDATE_PERSON,
     SUPPORTING_SETTLE_SECONDS,
 )
-from .helpers import get_supporting_location
-from .lifetime import (
-    SOURCE_CAMERA,
-    SOURCE_SUPPORTING,
-    authoritative_reports_away,
-    is_expired,
-    leading_source,
-    supporting_moved,
+from .helpers import (
+    get_leading_source,
+    get_supporting_changed,
+    get_supporting_location,
 )
+from .lifetime import SOURCE_CAMERA, SOURCE_SUPPORTING
 from .models import Person, PersonTrackerConfigEntry
 from .supporting import supporting_agrees
 
@@ -233,10 +230,7 @@ class PersonTrackerEntity(BaseScannerEntity):
 
     def _supporting_changed(self) -> datetime | None:
         """When the supporting area entity last changed state, if known."""
-        entity_id = self._person.supporting_area_entity
-        if not entity_id or (state := self.hass.states.get(entity_id)) is None:
-            return None
-        return state.last_changed
+        return get_supporting_changed(self.hass, self._person)
 
     @callback
     def _async_republish(self, *_: Any) -> None:
@@ -316,35 +310,8 @@ class PersonTrackerEntity(BaseScannerEntity):
         return True if self._leading_source(area) is not None else None
 
     def _leading_source(self, supporting_area: ar.AreaEntry | None) -> str | None:
-        """Which source leads (ADR 0008); the rule is ``leading_source``."""
-        person = self._person
-        # Authoritative demotion (ADR 0004): the person's phone says they are
-        # away from home, so neither the camera nor the supporting tracker is
-        # believed.
-        away = False
-        if person.authoritative_tracker:
-            tracker_state = self.hass.states.get(person.authoritative_tracker)
-            away = tracker_state is not None and authoritative_reports_away(
-                tracker_state.state
-            )
-        now = dt_util.now()
-        # TTL expiry (ADR 0004): no camera sighting within the person's TTL.
-        camera_current = not is_expired(person.last_seen, person.ttl, now)
-        # A settled move the cameras did not see (Issue #31 / ADR 0008).
-        moved = supporting_moved(
-            last_seen=person.last_seen,
-            camera_area_id=person.area_id,
-            supporting_area_id=supporting_area.id if supporting_area else None,
-            supporting_changed=self._supporting_changed(),
-            settle=timedelta(seconds=SUPPORTING_SETTLE_SECONDS),
-            now=now,
-        )
-        return leading_source(
-            authoritative_away=away,
-            camera_current=camera_current,
-            has_supporting_area=supporting_area is not None,
-            supporting_move_settled=moved,
-        )
+        """Which source leads (ADR 0008); see ``get_leading_source``."""
+        return get_leading_source(self.hass, self._person, supporting_area)
 
     def _area_name(self) -> str | None:
         """The live display name of the last seen area, so renames show."""

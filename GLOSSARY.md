@@ -46,7 +46,7 @@ An optional, lower-priority, room-level location source per Person (e.g. a BLE t
 _Avoid_: secondary tracker, BLE tracker (BLE is one example)
 
 **Re-check**:
-An Identification run shortly before a Person's sighting expires, on the Person's last camera and asking about that Person only. A confirmation refreshes the sighting; anything else lets it expire (ADR 0007).
+An Identification run shortly before a Person's sighting expires, on the Person's last camera and asking about that Person only. A confirmation refreshes the sighting; anything else lets it expire (ADR 0007). Skipped while the Supporting tracker leads after a move (ADR 0008).
 _Avoid_: poll, refresh
 
 **Move check**:

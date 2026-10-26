@@ -14,7 +14,9 @@ edge, so shortly before a person's sighting would expire, their last camera
 is snapshotted once more and the AI is asked about that person only (with
 only their reference images). A confirmation refreshes the sighting; anything
 else lets the TTL expire as before. People of the same camera who are due
-within the re-check lead share one run.
+within the re-check lead share one run. A person whom the supporting tracker
+leads after a move is left out (Issue #33 / ADR 0008): the re-check would
+snapshot the camera they left.
 
 Corroboration (ADR 0009): once the AI has answered, a hit the Person's
 supporting tracker agrees with (same area, else same floor) is boosted
@@ -71,13 +73,15 @@ from .helpers import (
     delete_frame,
     discover_reference_images,
     get_camera_area,
+    get_leading_source,
     get_supporting_location,
     purge_unknown_snapshots,
+    reports_away,
     save_frame,
     save_person_thumbnail,
     save_unknown_snapshot,
 )
-from .lifetime import authoritative_reports_away, is_expired
+from .lifetime import SOURCE_SUPPORTING, is_expired
 from .models import Camera, Person, PersonTrackerData, person_slug
 from .supporting import boosted_confidence
 
@@ -568,7 +572,9 @@ class DetectionCoordinator:
 
         Everyone else last seen on that camera whose re-check falls within
         the lead joins the same run. People whose authoritative tracker
-        already reports them away are not re-checked; they expire.
+        already reports them away are not re-checked; they expire. Nor are
+        people the supporting tracker leads after a move (Issue #33): their
+        sighting expires without a retry.
         """
         self._recheck_timers.pop(person.subentry_id, None)
         camera = self._data.cameras.get(person.last_camera or "")
@@ -583,21 +589,34 @@ class DetectionCoordinator:
                 or due is None
                 or due > now + self._recheck_lead(other)
                 or is_expired(other.last_seen, other.ttl, now)
-                or self._reports_away(other)
+                or reports_away(self._hass, other)
             ):
                 continue
             self._cancel_recheck(other)
+            if self._moved_away(other):
+                continue
             people.append(other)
         if not people:
             return
         await self._async_run(camera, partial(self._async_recheck, camera, people))
 
-    def _reports_away(self, person: Person) -> bool:
-        """Whether *person*'s authoritative tracker reports them away."""
-        if not person.authoritative_tracker:
+    def _moved_away(self, person: Person) -> bool:
+        """Whether the supporting tracker leads *person* after a move.
+
+        Only called for a current sighting, so the supporting tracker can
+        only lead because of a settled move (ADR 0008).
+        """
+        supporting_area, _ = get_supporting_location(self._hass, person)
+        if get_leading_source(self._hass, person, supporting_area) != SOURCE_SUPPORTING:
             return False
-        state = self._hass.states.get(person.authoritative_tracker)
-        return state is not None and authoritative_reports_away(state.state)
+        _LOGGER.debug(
+            "Skipping the re-check of %s on %s: the supporting tracker places "
+            "them in %s since they moved.",
+            person.name,
+            person.last_camera,
+            supporting_area.name if supporting_area else None,
+        )
+        return True
 
     async def _async_recheck(self, camera: Camera, people: list[Person]) -> bool:
         """Ask the AI whether *people* are still on *camera* (ADR 0007).
