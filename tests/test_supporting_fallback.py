@@ -25,6 +25,8 @@ from custom_components.person_tracker.const import (
     ATTR_LAST_LOCATION,
     ATTR_LAST_SEEN,
     ATTR_SOURCE,
+    ATTR_SUPPORTING_AREA,
+    ATTR_SUPPORTING_FLOOR,
 )
 from custom_components.person_tracker.lifetime import (
     SOURCE_CAMERA,
@@ -53,18 +55,50 @@ class TestLeadingSource:
     """Unit tests for lifetime.leading_source."""
 
     def test_current_camera_sighting_leads(self) -> None:
-        assert leading_source(False, True, True) == SOURCE_CAMERA
-        assert leading_source(False, True, False) == SOURCE_CAMERA
+        assert (
+            leading_source(
+                authoritative_away=False, camera_current=True, has_supporting_area=True
+            )
+            == SOURCE_CAMERA
+        )
+        assert (
+            leading_source(
+                authoritative_away=False, camera_current=True, has_supporting_area=False
+            )
+            == SOURCE_CAMERA
+        )
 
     def test_supporting_area_leads_once_the_sighting_is_not_current(self) -> None:
-        assert leading_source(False, False, True) == SOURCE_SUPPORTING
+        assert (
+            leading_source(
+                authoritative_away=False, camera_current=False, has_supporting_area=True
+            )
+            == SOURCE_SUPPORTING
+        )
 
     def test_no_source_without_sighting_or_supporting_area(self) -> None:
-        assert leading_source(False, False, False) is None
+        assert (
+            leading_source(
+                authoritative_away=False,
+                camera_current=False,
+                has_supporting_area=False,
+            )
+            is None
+        )
 
     def test_authoritative_away_outranks_everything(self) -> None:
-        assert leading_source(True, True, True) is None
-        assert leading_source(True, False, True) is None
+        assert (
+            leading_source(
+                authoritative_away=True, camera_current=True, has_supporting_area=True
+            )
+            is None
+        )
+        assert (
+            leading_source(
+                authoritative_away=True, camera_current=False, has_supporting_area=True
+            )
+            is None
+        )
 
 
 async def test_supporting_area_leads_after_the_sighting_expires(
@@ -82,7 +116,7 @@ async def test_supporting_area_leads_after_the_sighting_expires(
         await hass.async_block_till_done()
         attrs = _tracker_attributes(hass, "Alice")
         assert _tracker_state(hass, "Alice") == "home"
-        assert attrs[ATTR_SOURCE] == "camera"
+        assert attrs[ATTR_SOURCE] == SOURCE_CAMERA
         assert attrs[ATTR_AREA] == "Garden"
         assert attrs[ATTR_FLOOR] == "Ground Floor"
 
@@ -167,7 +201,7 @@ async def test_authoritative_away_outranks_the_supporting_tracker(
     ) as entry:
         _sight(hass, entry, "Alice", dt_util.now(), areas["Garden"].id)
         await hass.async_block_till_done()
-        assert _tracker_attributes(hass, "Alice")[ATTR_SOURCE] == "camera"
+        assert _tracker_attributes(hass, "Alice")[ATTR_SOURCE] == SOURCE_CAMERA
 
         hass.states.async_set(AUTHORITATIVE, "not_home")
         await hass.async_block_till_done()
@@ -176,7 +210,7 @@ async def test_authoritative_away_outranks_the_supporting_tracker(
         for attribute in (ATTR_SOURCE, ATTR_AREA, ATTR_FLOOR):
             assert attribute not in attrs
         # The supporting location is still reported, just not believed.
-        assert attrs["supporting_area"] == "Bedroom"
+        assert attrs[ATTR_SUPPORTING_AREA] == "Bedroom"
 
 
 async def test_floor_only_supporting_tracker_gives_no_presence(
@@ -193,4 +227,58 @@ async def test_floor_only_supporting_tracker_gives_no_presence(
         assert _tracker_state(hass, "Alice") == "unknown"
         assert ATTR_SOURCE not in attrs
         assert ATTR_FLOOR not in attrs
-        assert attrs["supporting_floor"] == "Upstairs"
+        assert attrs[ATTR_SUPPORTING_FLOOR] == "Upstairs"
+
+
+async def test_authoritative_away_ends_the_fallback(
+    hass: HomeAssistant, default_ai_task: None, freezer
+) -> None:
+    """Sighting expired, BLE tag still at home, phone away: unknown."""
+    areas = _house(hass)
+    hass.states.async_set(AREA_ENTITY, "Bedroom")
+    hass.states.async_set(AUTHORITATIVE, "home")
+    async with setup_entry(
+        hass,
+        people=[
+            person(
+                "Alice",
+                supporting_area_entity=AREA_ENTITY,
+                authoritative_tracker=AUTHORITATIVE,
+            )
+        ],
+    ) as entry:
+        seen = dt_util.now()
+        _sight(hass, entry, "Alice", seen, areas["Garden"].id)
+        freezer.move_to(seen + timedelta(minutes=31))
+        async_fire_time_changed(hass, dt_util.now())
+        await hass.async_block_till_done()
+        assert _tracker_attributes(hass, "Alice")[ATTR_SOURCE] == AREA_ENTITY
+
+        hass.states.async_set(AUTHORITATIVE, "not_home")
+        await hass.async_block_till_done()
+        assert _tracker_state(hass, "Alice") == "unknown"
+        assert ATTR_SOURCE not in _tracker_attributes(hass, "Alice")
+
+
+async def test_fallback_floor_comes_from_the_floor_entity(
+    hass: HomeAssistant, default_ai_task: None
+) -> None:
+    """With a floor entity, the fallback floor is the supporting floor."""
+    _house(hass)
+    hass.states.async_set(AREA_ENTITY, "Kitchen")
+    hass.states.async_set(FLOOR_ENTITY, "Upstairs")
+    async with setup_entry(
+        hass,
+        people=[
+            person(
+                "Alice",
+                supporting_area_entity=AREA_ENTITY,
+                supporting_floor_entity=FLOOR_ENTITY,
+            )
+        ],
+    ):
+        await hass.async_block_till_done()
+        attrs = _tracker_attributes(hass, "Alice")
+        assert _tracker_state(hass, "Alice") == "home"
+        assert attrs[ATTR_AREA] == "Kitchen"
+        assert attrs[ATTR_FLOOR] == "Upstairs"

@@ -3,10 +3,10 @@
 One device (entry_type=SERVICE) and one device_tracker entity per known
 person (ADR 0002), both tied to the person's config subentry so removing the
 person removes them. The entity is a presence (connection) tracker in
-``zone.home``: the state is "home" while a sighting is current, so a linked
-HA person is recorded at home, and "unknown" until the first sighting and
-again once the TTL expires or the authoritative tracker demotes it (ADR
-0004). The room lives in the attributes: ``area`` while the sighting is
+``zone.home``: the state is "home" while a camera sighting is current, so a
+linked HA person is recorded at home, and otherwise "unknown" (before the
+first sighting, after the TTL expires, or once the authoritative tracker
+demotes it, ADR 0004) unless the Supporting tracker falls back, see below. The room lives in the attributes: ``area`` while the sighting is
 current, ``last_location``/``last_seen`` retained throughout so staleness
 stays queryable; the area's floor follows the same rule (``floor`` vs
 ``last_floor``/``floor_id``). The optional Supporting tracker (ADR 0008) is
@@ -286,7 +286,11 @@ class PersonTrackerEntity(BaseScannerEntity):
             )
         # TTL expiry (ADR 0004): no camera sighting within the person's TTL.
         camera_current = not is_expired(person.last_seen, person.ttl, dt_util.now())
-        return leading_source(away, camera_current, supporting_area is not None)
+        return leading_source(
+            authoritative_away=away,
+            camera_current=camera_current,
+            has_supporting_area=supporting_area is not None,
+        )
 
     def _area_name(self) -> str | None:
         """The live display name of the last seen area, so renames show."""
@@ -407,7 +411,7 @@ class PersonTrackerEntity(BaseScannerEntity):
         supporting_area, supporting_floor = self._supporting()
         source = self._leading_source(supporting_area)
         camera_leads = source == SOURCE_CAMERA
-        if source == SOURCE_CAMERA:
+        if camera_leads:
             attributes[ATTR_SOURCE] = SOURCE_CAMERA
         elif source == SOURCE_SUPPORTING and supporting_area is not None:
             attributes[ATTR_SOURCE] = person.supporting_area_entity

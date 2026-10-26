@@ -61,7 +61,7 @@ def authoritative_reports_away(state: str | None) -> bool:
 
 
 def leading_source(
-    authoritative_away: bool, camera_current: bool, supporting_area: bool
+    *, authoritative_away: bool, camera_current: bool, has_supporting_area: bool
 ) -> str | None:
     """Which source places the person at home, if any.
 
@@ -73,6 +73,6 @@ def leading_source(
         return None
     if camera_current:
         return SOURCE_CAMERA
-    if supporting_area:
+    if has_supporting_area:
         return SOURCE_SUPPORTING
     return None
