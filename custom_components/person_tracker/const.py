@@ -141,3 +141,8 @@ ATTR_LAST_SEEN = "last_seen"
 ATTR_LAST_LOCATION = "last_location"
 ATTR_AREA_ID = "area_id"
 ATTR_LAST_CAMERA = "last_camera"
+# The HA floor of that area (Issue #28), looked up live like the area name:
+# floor only while the sighting is current, last_floor and floor_id kept.
+ATTR_FLOOR = "floor"
+ATTR_LAST_FLOOR = "last_floor"
+ATTR_FLOOR_ID = "floor_id"

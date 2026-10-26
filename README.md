@@ -46,6 +46,23 @@ The integration is configured entirely through the Home Assistant UI:
 4. After initial setup, you can add, edit, or remove persons from the integration's configuration page. Each person can have an optional description of distinguishing features (height, build, hair, glasses, ...), which is sent to the AI to help tell household members apart when the face is not visible.
 5. For each person, place reference images in your Home Assistant configuration directory under `person_tracker/people/<person_name>/`. They are sent to the AI along with every camera snapshot to recognize who is who. Changes apply on the next detection, no reload needed. Each reference image adds to the size, and so the cost, of every AI request, so a few clear photos per person work best.
 
+## Tracker attributes
+
+Each person's tracker (`device_tracker.<person>`) is `home` while a sighting is current and `unknown` once it expires (TTL) or the authoritative tracker reports the person away. It carries these attributes:
+
+| Attribute | Description | Present |
+| --- | --- | --- |
+| `area` | Display name of the area the person was seen in | Only while `home` |
+| `last_location` | Display name of the area the person was last seen in | Kept after expiry |
+| `area_id` | ID of that area | Kept after expiry |
+| `floor` | Display name of that area's floor | Only while `home`, and only if the area is on a floor |
+| `last_floor` | Display name of that area's floor | Kept after expiry, if the area is on a floor |
+| `floor_id` | ID of that floor | Kept after expiry, if the area is on a floor |
+| `last_seen` | Time of the last sighting | Kept after expiry |
+| `last_camera` | Camera of the last sighting | Kept after expiry |
+
+Area and floor are looked up live from the last seen area, so renaming an area or floor, or moving the area to another floor, shows on the tracker without a reload, also after expiry.
+
 ## Requirements
 
 - Home Assistant Core 2025.8 or later (for AI Task integration support). The integration's own icon shows from Home Assistant 2026.3 on, which loads brand images shipped with custom integrations.
