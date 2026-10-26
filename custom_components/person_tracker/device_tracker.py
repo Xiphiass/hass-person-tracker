@@ -8,7 +8,8 @@ HA person is recorded at home, and "unknown" until the first sighting and
 again once the TTL expires or the authoritative tracker demotes it (ADR
 0004). The room lives in the attributes: ``area`` while the sighting is
 current, ``last_location``/``last_seen`` retained throughout so staleness
-stays queryable. The entity picture mirrors the picture of the HA person that
+stays queryable; the area's floor follows the same rule (``floor`` vs
+``last_floor``/``floor_id``). The entity picture mirrors the picture of the HA person that
 tracks this entity, so dashboards can show the profile picture.
 """
 
@@ -23,6 +24,7 @@ from homeassistant.components.device_tracker.entity import BaseScannerEntity
 from homeassistant.const import ATTR_ENTITY_PICTURE, EVENT_STATE_CHANGED
 from homeassistant.core import Event, EventStateChangedData, HomeAssistant, callback
 from homeassistant.helpers import area_registry as ar
+from homeassistant.helpers import floor_registry as fr
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
@@ -35,7 +37,10 @@ from homeassistant.util import dt as dt_util
 from .const import (
     ATTR_AREA,
     ATTR_AREA_ID,
+    ATTR_FLOOR,
+    ATTR_FLOOR_ID,
     ATTR_LAST_CAMERA,
+    ATTR_LAST_FLOOR,
     ATTR_LAST_LOCATION,
     ATTR_LAST_SEEN,
     DOMAIN,
@@ -83,6 +88,7 @@ class PersonTrackerEntity(BaseScannerEntity):
         )  # pyright: ignore[reportIncompatibleVariableOverride]
         self._unsub_update: Callable[[], None] | None = None
         self._unsub_area: Callable[[], None] | None = None
+        self._unsub_floor: Callable[[], None] | None = None
         self._unsub_authoritative: Callable[[], None] | None = None
         self._unsub_ttl: Callable[[], None] | None = None
         self._unsub_person: Callable[[], None] | None = None
@@ -100,6 +106,11 @@ class PersonTrackerEntity(BaseScannerEntity):
         self._unsub_area = self.hass.bus.async_listen(
             ar.EVENT_AREA_REGISTRY_UPDATED,
             self._async_handle_area_registry_update,
+        )
+        # Likewise the floor of that area may be renamed (Issue #28).
+        self._unsub_floor = self.hass.bus.async_listen(
+            fr.EVENT_FLOOR_REGISTRY_UPDATED,
+            self._async_handle_floor_registry_update,
         )
 
         # Authoritative demotion (ADR 0004): re-publish whenever the
@@ -127,6 +138,7 @@ class PersonTrackerEntity(BaseScannerEntity):
         for unsub in (
             self._unsub_update,
             self._unsub_area,
+            self._unsub_floor,
             self._unsub_authoritative,
             self._unsub_ttl,
             self._unsub_person,
@@ -135,6 +147,7 @@ class PersonTrackerEntity(BaseScannerEntity):
                 unsub()
         self._unsub_update = None
         self._unsub_area = None
+        self._unsub_floor = None
         self._unsub_authoritative = None
         self._unsub_ttl = None
         self._unsub_person = None
@@ -174,6 +187,16 @@ class PersonTrackerEntity(BaseScannerEntity):
     ) -> None:
         """An area registry change; re-publish if it is our area."""
         if event.data.get("area_id") != self._person.area_id:
+            return
+        self.async_write_ha_state()
+
+    @callback
+    def _async_handle_floor_registry_update(
+        self, event: Event[fr.EventFloorRegistryUpdatedData]
+    ) -> None:
+        """A floor registry change; re-publish if it is our area's floor."""
+        floor = self._floor()
+        if floor is None or event.data.get("floor_id") != floor.floor_id:
             return
         self.async_write_ha_state()
 
@@ -232,19 +255,36 @@ class PersonTrackerEntity(BaseScannerEntity):
                 return area.name
         return person.location
 
+    def _floor(self) -> fr.FloorEntry | None:
+        """The live floor of the last seen area, so renames and moves show."""
+        if self._person.area_id is None:
+            return None
+        area = ar.async_get(self.hass).async_get_area(self._person.area_id)
+        if area is None or area.floor_id is None:
+            return None
+        return fr.async_get(self.hass).async_get_floor(area.floor_id)
+
     @property
     @override
     def extra_state_attributes(
         self,
     ) -> dict[str, Any] | None:  # pyright: ignore[reportIncompatibleVariableOverride]
-        """Current area, last seen, last location, area ID, last camera."""
+        """Current area and floor, last seen, last location and floor, IDs,
+        last camera."""
         person = self._person
         attributes: dict[str, Any] = {}
+        is_connected = self.is_connected
         area_name = self._area_name()
         if area_name is not None:
-            if self.is_connected:
+            if is_connected:
                 attributes[ATTR_AREA] = area_name
             attributes[ATTR_LAST_LOCATION] = area_name
+        floor = self._floor()
+        if floor is not None:
+            if is_connected:
+                attributes[ATTR_FLOOR] = floor.name
+            attributes[ATTR_LAST_FLOOR] = floor.name
+            attributes[ATTR_FLOOR_ID] = floor.floor_id
         if person.last_seen is not None:
             attributes[ATTR_LAST_SEEN] = person.last_seen.isoformat()
         if person.area_id is not None:
