@@ -89,6 +89,7 @@ _PERSON_SCHEMA = probatio.Schema(
         ),
     }
 )
+_SUPPORTING_KEYS = (CONF_SUPPORTING_AREA_ENTITY, CONF_SUPPORTING_FLOOR_ENTITY)
 _TRIGGERS_SELECTOR = EntitySelector(
     EntitySelectorConfig(domain="binary_sensor", multiple=True)
 )
@@ -393,7 +394,7 @@ class PersonSubentryFlow(ConfigSubentryFlow):
             error := authoritative_tracker_error(self.hass, authoritative)
         ):
             errors[CONF_AUTHORITATIVE_TRACKER] = error
-        for key in (CONF_SUPPORTING_AREA_ENTITY, CONF_SUPPORTING_FLOOR_ENTITY):
+        for key in _SUPPORTING_KEYS:
             if (entity_id := user_input.get(key)) and (
                 error := supporting_entity_error(self.hass, entity_id)
             ):
@@ -406,7 +407,7 @@ class PersonSubentryFlow(ConfigSubentryFlow):
         }
         if authoritative:
             data[CONF_AUTHORITATIVE_TRACKER] = authoritative
-        for key in (CONF_SUPPORTING_AREA_ENTITY, CONF_SUPPORTING_FLOOR_ENTITY):
+        for key in _SUPPORTING_KEYS:
             if entity_id := user_input.get(key):
                 data[key] = entity_id
         if description := (user_input.get(CONF_DESCRIPTION) or "").strip():

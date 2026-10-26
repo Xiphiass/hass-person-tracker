@@ -2,14 +2,15 @@
 
 These functions resolve the supporting entities' states to HA areas and
 floors without any HA dependency, so they can be unit-tested in isolation.
-The caller passes the registry entries as :class:`Place` values.
+The caller passes the registry entries as :class:`AreaOrFloor` values.
 
 Resolution
 ----------
-An ``area_id``/``floor_id`` attribute naming a known place wins. Otherwise
-the state is matched against place IDs, then names, then aliases, ignoring
-case. A state that reports no place (``unknown``, ``unavailable``,
-``not_home``, ``away``) or matches nothing resolves to no place.
+An ``area_id``/``floor_id`` attribute naming a known area or floor wins.
+Otherwise the state is matched against their IDs, then names, then aliases,
+ignoring case. A state that reports no location (``unknown``,
+``unavailable``, ``not_home``, ``away``), even with a stale attribute, or
+that matches nothing resolves to none.
 
 Agreement
 ---------
@@ -29,12 +30,12 @@ AGREES_AREA = "area"
 AGREES_FLOOR = "floor"
 AGREES_NONE = "none"
 
-# States in which a supporting entity reports no place at all.
-_NO_PLACE_STATES = frozenset({STATE_UNKNOWN, STATE_UNAVAILABLE, STATE_NOT_HOME, "away"})
+# States in which a supporting entity reports no location at all.
+_ABSENT_STATES = frozenset({STATE_UNKNOWN, STATE_UNAVAILABLE, STATE_NOT_HOME, "away"})
 
 
 @dataclass(frozen=True)
-class Place:
+class AreaOrFloor:
     """An HA area or floor, as far as resolution is concerned."""
 
     id: str
@@ -42,30 +43,32 @@ class Place:
     aliases: frozenset[str]
 
 
-def resolve_place(
-    state: str | None, attribute_id: Any, places: Iterable[Place]
+def resolve_area_or_floor(
+    state: str | None, attribute_id: Any, candidates: Iterable[AreaOrFloor]
 ) -> str | None:
-    """The ID of the place a supporting entity's *state* names, if any.
+    """The ID of the area or floor a supporting entity's *state* names.
 
     *attribute_id* is the entity's ``area_id``/``floor_id`` attribute; it
-    wins when it names one of *places*.
+    wins when it names one of *candidates*. None when nothing matches.
     """
-    if not state or state.lower() in _NO_PLACE_STATES:
+    wanted = (state or "").strip().casefold()
+    if not wanted or wanted in _ABSENT_STATES:
         return None
-    places = list(places)
+    candidates = list(candidates)
     if attribute_id is not None:
-        for place in places:
-            if place.id == attribute_id:
-                return place.id
-    wanted = state.strip().casefold()
+        for candidate in candidates:
+            if candidate.id == attribute_id:
+                return candidate.id
     for matches in (
-        lambda place: place.id.casefold() == wanted,
-        lambda place: place.name.casefold() == wanted,
-        lambda place: any(alias.casefold() == wanted for alias in place.aliases),
+        lambda candidate: candidate.id.casefold() == wanted,
+        lambda candidate: candidate.name.casefold() == wanted,
+        lambda candidate: any(
+            alias.casefold() == wanted for alias in candidate.aliases
+        ),
     ):
-        for place in places:
-            if matches(place):
-                return place.id
+        for candidate in candidates:
+            if matches(candidate):
+                return candidate.id
     return None
 
 

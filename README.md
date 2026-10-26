@@ -48,7 +48,7 @@ The integration is configured entirely through the Home Assistant UI:
    - **Supporting area entity**: an entity whose state names a Home Assistant area (e.g. Bermuda's `sensor.<device>_area`). An `area_id` attribute naming a known area wins; otherwise the state is matched against area IDs, then names, then aliases, ignoring case.
    - **Supporting floor entity**: an entity whose state names a Home Assistant floor, resolved the same way (`floor_id` attribute, then ID, name, aliases). Without it, the supporting floor is the floor of the supporting area.
 
-   States such as `unknown`, `unavailable`, `not_home` or `away`, or a state that matches no area or floor, mean no supporting location. For now the supporting tracker is only reported in the tracker's attributes; it does not change the tracker's state.
+   States such as `unknown`, `unavailable`, `not_home` or `away`, or a state that matches no area or floor, mean no supporting location, even if an `area_id`/`floor_id` attribute is still set. For now the supporting tracker is only reported in the tracker's attributes; it does not change the tracker's state.
 5. For each person, place reference images in your Home Assistant configuration directory under `person_tracker/people/<person_name>/`. They are sent to the AI along with every camera snapshot to recognize who is who. Changes apply on the next detection, no reload needed. Each reference image adds to the size, and so the cost, of every AI request, so a few clear photos per person work best.
 
 ## Tracker attributes

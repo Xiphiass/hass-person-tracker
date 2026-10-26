@@ -56,7 +56,7 @@ from .const import (
 )
 from .lifetime import authoritative_reports_away, is_expired
 from .models import Person, PersonTrackerConfigEntry
-from .supporting import Place, resolve_place, supporting_agrees
+from .supporting import AreaOrFloor, resolve_area_or_floor, supporting_agrees
 
 
 async def async_setup_entry(
@@ -307,12 +307,14 @@ class PersonTrackerEntity(BaseScannerEntity):
         ]
 
     def _resolve_supporting(
-        self, entity_id: str | None, attribute: str, places: list[Place]
+        self, entity_id: str | None, attribute: str, candidates: list[AreaOrFloor]
     ) -> str | None:
-        """The ID of the place *entity_id*'s state names, if any."""
+        """The ID of the area or floor *entity_id*'s state names, if any."""
         if entity_id is None or (state := self.hass.states.get(entity_id)) is None:
             return None
-        return resolve_place(state.state, state.attributes.get(attribute), places)
+        return resolve_area_or_floor(
+            state.state, state.attributes.get(attribute), candidates
+        )
 
     def _supporting(self) -> tuple[ar.AreaEntry | None, fr.FloorEntry | None]:
         """The live supporting area and floor (ADR 0008).
@@ -327,7 +329,7 @@ class PersonTrackerEntity(BaseScannerEntity):
             person.supporting_area_entity,
             "area_id",
             [
-                Place(entry.id, entry.name, frozenset(entry.aliases))
+                AreaOrFloor(entry.id, entry.name, frozenset(entry.aliases))
                 for entry in area_registry.async_list_areas()
             ],
         )
@@ -338,7 +340,7 @@ class PersonTrackerEntity(BaseScannerEntity):
                 person.supporting_floor_entity,
                 "floor_id",
                 [
-                    Place(entry.floor_id, entry.name, frozenset(entry.aliases))
+                    AreaOrFloor(entry.floor_id, entry.name, frozenset(entry.aliases))
                     for entry in floor_registry.async_list_floors()
                 ],
             )
