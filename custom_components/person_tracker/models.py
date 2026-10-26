@@ -13,6 +13,7 @@ from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 from .const import (
     DEFAULT_COOLDOWN_SECONDS,
     DEFAULT_MIN_CONFIDENCE,
+    DEFAULT_MOVE_CHECK,
     DEFAULT_RECHECK,
     DEFAULT_TTL_MINUTES,
     DOMAIN,
@@ -104,6 +105,9 @@ class PersonTrackerData:
     # Re-check a sighting on its last camera shortly before the TTL runs out
     # (ADR 0007).
     recheck: bool = DEFAULT_RECHECK
+    # Ask the cameras of the area a settled supporting move leads to whether
+    # the person is there (Issue #34 / ADR 0008).
+    move_check: bool = DEFAULT_MOVE_CHECK
     # The detection loop; set during entry setup.
     coordinator: DetectionCoordinator | None = None
 

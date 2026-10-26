@@ -37,11 +37,13 @@
         "data": {
           "cooldown": "Cooldown (seconds)",
           "min_confidence": "Minimum confidence",
-          "recheck": "Re-check before expiry"
+          "recheck": "Re-check before expiry",
+          "move_check": "Move check after a supporting tracker move"
         },
         "data_description": {
           "min_confidence": "Identifications below this confidence (0-1) update no tracker; the snapshot is kept as an unknown snapshot instead. Raise it if people get mixed up.",
-          "recheck": "Shortly before a person's sighting expires, take one more snapshot from the camera that last saw them and ask the AI whether they are still there. Keeps people who sit still (and so trigger no new detection) at home, at the cost of one AI call per expiry."
+          "recheck": "Shortly before a person's sighting expires, take one more snapshot from the camera that last saw them and ask the AI whether they are still there. Keeps people who sit still (and so trigger no new detection) at home, at the cost of one AI call per expiry.",
+          "move_check": "When a person's supporting tracker settles in another area that has cameras, and no camera has seen them there yet, ask that area's cameras whether the person is there. A confirmation counts as a normal camera sighting. Costs at most one AI call per camera of that area per move; only affects people with a supporting area entity."
         }
       },
       "reconfigure": {

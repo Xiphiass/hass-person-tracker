@@ -14,6 +14,7 @@ CONF_AI_TASK_ENTITY = "ai_task_entity"
 CONF_COOLDOWN = "cooldown"
 CONF_MIN_CONFIDENCE = "min_confidence"
 CONF_RECHECK = "recheck"
+CONF_MOVE_CHECK = "move_check"
 
 # Each Person is a config subentry of this type.
 SUBENTRY_PERSON = "person"
@@ -54,6 +55,12 @@ RECHECK_LEAD_SECONDS = 60
 # last camera sighting and has held this long leads over the current sighting,
 # because the person moved somewhere the cameras did not see.
 SUPPORTING_SETTLE_SECONDS = 120
+# Move check (Issue #34 / ADR 0008): once a supporting move has settled into an
+# area with cameras, and no camera has confirmed it, those cameras are asked
+# about the moved person. On by default.
+DEFAULT_MOVE_CHECK = True
+# Moves into the same area that settle within this window share one run.
+MOVE_CHECK_GROUP_SECONDS = 10
 # Supporting tracker corroboration (Issue #32 / ADR 0009): after
 # Identification, a hit on a camera in the supporting area gains the area
 # boost, else one on the supporting floor gains the floor boost, before the
@@ -121,6 +128,17 @@ AI_TASK_RECHECK_INSTRUCTIONS = (
     "still there. Only report a listed household member who is clearly "
     "visible now. Anyone else in the snapshot, including people who merely "
     'resemble a listed household member, counts in "unknown_persons".'
+)
+
+# Move check prompt (Issue #34 / ADR 0008), prepended like the re-check prompt.
+# It does not say why the listed people are expected here: the supporting
+# tracker never reaches the AI (ADR 0009).
+AI_TASK_MOVE_CHECK_INSTRUCTIONS = (
+    "This snapshot is a move check: it was taken to confirm whether the "
+    "listed household members are here. Only report a listed household "
+    "member who is clearly visible now. Anyone else in the snapshot, "
+    "including people who merely resemble a listed household member, counts "
+    'in "unknown_persons".'
 )
 
 # The scale of the bbox coordinates the AI is asked for (0..BBOX_SCALE on

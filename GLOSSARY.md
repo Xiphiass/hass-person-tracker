@@ -50,7 +50,7 @@ An Identification run shortly before a Person's sighting expires, on the Person'
 _Avoid_: poll, refresh
 
 **Move check**:
-An Identification run on the cameras of the area the Supporting tracker has just moved the Person to, asking about that Person only, so a camera can confirm the move. A confirmation is a normal sighting; a miss changes nothing (ADR 0008).
+An Identification run on every camera of the area the Supporting tracker has just moved the Person to, asking about that Person only, so a camera can confirm the move. A confirmation is a normal sighting; a miss changes nothing (ADR 0008).
 
 **Unknown snapshot**:
 A saved Snapshot in which no known Person was identified. Retained on disk with camera and timestamp metadata; the raw material for future self-learning (out of scope in v1).
