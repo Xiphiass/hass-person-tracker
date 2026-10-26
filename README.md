@@ -61,7 +61,7 @@ Each person's tracker (`device_tracker.<person>`) is `home` while a sighting is 
 | `last_seen` | Time of the last sighting | Kept after expiry |
 | `last_camera` | Camera of the last sighting | Kept after expiry |
 
-Area and floor names are looked up live, so renaming an area or floor, or moving the area to another floor, shows on the tracker without a reload.
+Area and floor are looked up live from the last seen area, so renaming an area or floor, or moving the area to another floor, shows on the tracker without a reload, also after expiry.
 
 ## Requirements
 

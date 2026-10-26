@@ -164,3 +164,24 @@ async def test_area_moved_to_another_floor_republishes(
         assert ATTR_FLOOR not in attrs
         assert ATTR_LAST_FLOOR not in attrs
         assert ATTR_FLOOR_ID not in attrs
+
+
+async def test_floor_deleted_drops_floor_attributes(
+    hass: HomeAssistant, default_ai_task: None
+) -> None:
+    """Deleting the area's floor drops the floor attributes without errors."""
+    add_camera(hass, "camera.front_door", area_name="Garden")
+    garden = _garden_on_floor(hass, "Ground Floor")
+
+    async with setup_entry(hass, people=[person("Alice")]) as entry:
+        _sight(hass, entry, "Alice", dt_util.now(), garden.id)
+        await hass.async_block_till_done()
+
+        assert garden.floor_id is not None
+        fr.async_get(hass).async_delete(garden.floor_id)
+        await hass.async_block_till_done()
+
+        attrs = _tracker_attributes(hass, "Alice")
+        assert ATTR_FLOOR not in attrs
+        assert ATTR_LAST_FLOOR not in attrs
+        assert ATTR_FLOOR_ID not in attrs

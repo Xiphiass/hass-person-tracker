@@ -9,8 +9,8 @@ again once the TTL expires or the authoritative tracker demotes it (ADR
 0004). The room lives in the attributes: ``area`` while the sighting is
 current, ``last_location``/``last_seen`` retained throughout so staleness
 stays queryable; the area's floor follows the same rule (``floor`` vs
-``last_floor``/``floor_id``). The entity picture mirrors the picture of the HA person that
-tracks this entity, so dashboards can show the profile picture.
+``last_floor``/``floor_id``). The entity picture mirrors the picture of the
+HA person that tracks this entity, so dashboards can show the profile picture.
 """
 
 from __future__ import annotations
@@ -107,7 +107,8 @@ class PersonTrackerEntity(BaseScannerEntity):
             ar.EVENT_AREA_REGISTRY_UPDATED,
             self._async_handle_area_registry_update,
         )
-        # Likewise the floor of that area may be renamed (Issue #28).
+        # Likewise the floor of that area may be renamed (Issue #28); moving
+        # the area to another floor is an area registry update, caught above.
         self._unsub_floor = self.hass.bus.async_listen(
             fr.EVENT_FLOOR_REGISTRY_UPDATED,
             self._async_handle_floor_registry_update,
@@ -269,8 +270,7 @@ class PersonTrackerEntity(BaseScannerEntity):
     def extra_state_attributes(
         self,
     ) -> dict[str, Any] | None:  # pyright: ignore[reportIncompatibleVariableOverride]
-        """Current area and floor, last seen, last location and floor, IDs,
-        last camera."""
+        """Current and last area and floor, their IDs, last seen and camera."""
         person = self._person
         attributes: dict[str, Any] = {}
         is_connected = self.is_connected
