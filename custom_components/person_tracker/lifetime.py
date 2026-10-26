@@ -19,7 +19,10 @@ Leading source
 --------------
 The current camera sighting leads; once it is not current, a supporting
 tracker that resolves to an area leads instead (ADR 0008). A supporting
-floor alone gives no presence. The authoritative tracker reporting the
+floor alone gives no presence. The supporting tracker also leads over a
+current sighting after a settled move the cameras did not see (Issue #31):
+its area changed after the sighting, differs from the camera's area, and
+has held for the settle period. The authoritative tracker reporting the
 person away outranks both: no source leads and the tracker is ``unknown``.
 """
 
@@ -60,18 +63,49 @@ def authoritative_reports_away(state: str | None) -> bool:
     return state != STATE_HOME
 
 
+def supporting_moved(
+    *,
+    last_seen: datetime | None,
+    camera_area_id: str | None,
+    supporting_area_id: str | None,
+    supporting_changed: datetime | None,
+    settle: timedelta,
+    now: datetime,
+) -> bool:
+    """Whether the person moved somewhere the cameras did not see.
+
+    True when the supporting area changed after the last camera sighting
+    (*supporting_changed* is its entity's ``last_changed``), differs from
+    the camera's area, and has held for *settle* as of *now*. A supporting
+    area that disagreed since before the sighting is the one the camera just
+    proved wrong, so it is no move.
+    """
+    if last_seen is None or supporting_area_id is None or supporting_changed is None:
+        return False
+    return (
+        supporting_changed > last_seen
+        and supporting_area_id != camera_area_id
+        and now - supporting_changed >= settle
+    )
+
+
 def leading_source(
-    *, authoritative_away: bool, camera_current: bool, has_supporting_area: bool
+    *,
+    authoritative_away: bool,
+    camera_current: bool,
+    has_supporting_area: bool,
+    supporting_moved: bool = False,
 ) -> str | None:
     """Which source places the person at home, if any.
 
-    ``camera`` while the camera sighting is current, else ``supporting``
-    while the supporting tracker resolves to an area, else None (unknown).
-    None whenever the authoritative tracker reports the person away.
+    ``camera`` while the camera sighting is current and the supporting
+    tracker has not *supporting_moved*, else ``supporting`` while the
+    supporting tracker resolves to an area, else None (unknown). None
+    whenever the authoritative tracker reports the person away.
     """
     if authoritative_away:
         return None
-    if camera_current:
+    if camera_current and not supporting_moved:
         return SOURCE_CAMERA
     if has_supporting_area:
         return SOURCE_SUPPORTING

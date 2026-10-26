@@ -50,6 +50,10 @@ DEFAULT_MIN_CONFIDENCE = 0.7
 # AI call, and people of the same camera due within that window share one run.
 DEFAULT_RECHECK = True
 RECHECK_LEAD_SECONDS = 60
+# Supporting tracker (ADR 0008): a supporting area that changed after the
+# last camera sighting and has held this long leads over the current sighting,
+# because the person moved somewhere the cameras did not see.
+SUPPORTING_SETTLE_SECONDS = 120
 
 # Reference images (ADR 0005): user-placed files under
 # <config>/person_tracker/people/<person>/<file>.

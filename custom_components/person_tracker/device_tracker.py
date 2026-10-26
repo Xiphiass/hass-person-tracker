@@ -14,7 +14,9 @@ reported alongside: its area and floor, resolved live, and whether it agrees
 with the current camera sighting (Issue #29). Once the camera sighting is
 not current, a supporting area keeps the state "home" with ``area`` and
 ``floor`` from the supporting tracker, and ``source`` names which source
-leads (Issue #30); the ``last_*`` attributes stay the camera's.
+leads (Issue #30); the ``last_*`` attributes stay the camera's. The
+supporting tracker also leads over a current sighting once its area changed
+after the sighting and has held for a settle period (Issue #31).
 The entity picture mirrors the picture of the HA person that tracks this
 entity, so dashboards can show the profile picture.
 """
@@ -57,6 +59,7 @@ from .const import (
     ATTR_SUPPORTING_FLOOR_ID,
     DOMAIN,
     SIGNAL_TRACKER_UPDATE_PERSON,
+    SUPPORTING_SETTLE_SECONDS,
 )
 from .lifetime import (
     SOURCE_CAMERA,
@@ -64,6 +67,7 @@ from .lifetime import (
     authoritative_reports_away,
     is_expired,
     leading_source,
+    supporting_moved,
 )
 from .models import Person, PersonTrackerConfigEntry
 from .supporting import AreaOrFloor, resolve_area_or_floor, supporting_agrees
@@ -111,6 +115,7 @@ class PersonTrackerEntity(BaseScannerEntity):
         self._unsub_authoritative: Callable[[], None] | None = None
         self._unsub_supporting: Callable[[], None] | None = None
         self._unsub_ttl: Callable[[], None] | None = None
+        self._unsub_settle: Callable[[], None] | None = None
         self._unsub_person: Callable[[], None] | None = None
 
     async def async_added_to_hass(self) -> None:
@@ -160,6 +165,7 @@ class PersonTrackerEntity(BaseScannerEntity):
         self._attr_entity_picture = self._linked_person_picture()
 
         self._schedule_expiry()
+        self._schedule_settle()
 
     async def async_will_remove_from_hass(self) -> None:
         """Stop listening for updates and cancel the TTL timer."""
@@ -170,6 +176,7 @@ class PersonTrackerEntity(BaseScannerEntity):
             self._unsub_authoritative,
             self._unsub_supporting,
             self._unsub_ttl,
+            self._unsub_settle,
             self._unsub_person,
         ):
             if unsub is not None:
@@ -180,6 +187,7 @@ class PersonTrackerEntity(BaseScannerEntity):
         self._unsub_authoritative = None
         self._unsub_supporting = None
         self._unsub_ttl = None
+        self._unsub_settle = None
         self._unsub_person = None
 
     def _schedule_expiry(self) -> None:
@@ -203,12 +211,40 @@ class PersonTrackerEntity(BaseScannerEntity):
             self.hass, self._async_handle_ttl, expiry
         )
 
+    def _schedule_settle(self) -> None:
+        """(Re)schedule the wake-up for when the supporting area settles.
+
+        Like the TTL timer, it only wakes the state property; whether the
+        settled area leads is decided by ``lifetime.supporting_moved``
+        (Issue #31 / ADR 0008).
+        """
+        if self._unsub_settle is not None:
+            self._unsub_settle()
+            self._unsub_settle = None
+        if (changed := self._supporting_changed()) is None:
+            return
+        settled = changed + timedelta(seconds=SUPPORTING_SETTLE_SECONDS)
+        if settled <= dt_util.now():
+            return
+        self._unsub_settle = async_track_point_in_utc_time(
+            self.hass, self._async_handle_settle, settled
+        )
+
+    def _supporting_changed(self) -> datetime | None:
+        """When the supporting area entity last changed state, if known."""
+        entity_id = self._person.supporting_area_entity
+        if not entity_id or (state := self.hass.states.get(entity_id)) is None:
+            return None
+        return state.last_changed
+
     @callback
     def _async_republish(self, *_: Any) -> None:
         """A detection run or tracker change affected this person."""
         # A detection may have moved last_seen, so the TTL wake-up must be
-        # re-derived from the fresh sighting.
+        # re-derived from the fresh sighting; a supporting area change
+        # restarts the settle period.
         self._schedule_expiry()
+        self._schedule_settle()
         self.async_write_ha_state()
 
     @callback
@@ -265,6 +301,12 @@ class PersonTrackerEntity(BaseScannerEntity):
         """The TTL wake-up fired; re-publish the (now stale) state."""
         self.async_write_ha_state()
 
+    @callback
+    def _async_handle_settle(self, _now: datetime) -> None:
+        """The supporting area settled; re-publish, it may now lead."""
+        self._unsub_settle = None
+        self.async_write_ha_state()
+
     @property
     @override
     def is_connected(self) -> bool | None:
@@ -284,12 +326,23 @@ class PersonTrackerEntity(BaseScannerEntity):
             away = tracker_state is not None and authoritative_reports_away(
                 tracker_state.state
             )
+        now = dt_util.now()
         # TTL expiry (ADR 0004): no camera sighting within the person's TTL.
-        camera_current = not is_expired(person.last_seen, person.ttl, dt_util.now())
+        camera_current = not is_expired(person.last_seen, person.ttl, now)
+        # A settled move the cameras did not see (Issue #31 / ADR 0008).
+        moved = supporting_moved(
+            last_seen=person.last_seen,
+            camera_area_id=person.area_id,
+            supporting_area_id=supporting_area.id if supporting_area else None,
+            supporting_changed=self._supporting_changed(),
+            settle=timedelta(seconds=SUPPORTING_SETTLE_SECONDS),
+            now=now,
+        )
         return leading_source(
             authoritative_away=away,
             camera_current=camera_current,
             has_supporting_area=supporting_area is not None,
+            supporting_moved=moved,
         )
 
     def _area_name(self) -> str | None:
