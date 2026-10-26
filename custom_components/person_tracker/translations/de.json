@@ -107,10 +107,14 @@
             "name": "Name der Person",
             "ttl": "TTL (Minuten)",
             "authoritative_tracker": "Maßgeblicher Tracker (optional)",
+            "supporting_area_entity": "Unterstützende Bereichs-Entität (optional)",
+            "supporting_floor_entity": "Unterstützende Etagen-Entität (optional)",
             "description": "Beschreibung (optional)"
           },
           "data_description": {
-            "description": "Unterscheidungsmerkmale, z. B. Größe, Statur, Haare, Brille, Bart. Wird an die KI gesendet, damit sie Haushaltsmitglieder auch ohne sichtbares Gesicht unterscheiden kann."
+            "description": "Unterscheidungsmerkmale, z. B. Größe, Statur, Haare, Brille, Bart. Wird an die KI gesendet, damit sie Haushaltsmitglieder auch ohne sichtbares Gesicht unterscheiden kann.",
+            "supporting_area_entity": "Eine nachrangige Standortquelle auf Raumebene, z. B. der Bereichssensor eines BLE-Trackers. Ihr Zustand nennt einen Bereich (ID, Name oder Alias).",
+            "supporting_floor_entity": "Ihr Zustand nennt eine Etage (ID, Name oder Alias). Ohne sie wird die Etage des unterstützenden Bereichs verwendet."
           }
         },
         "reconfigure": {
@@ -120,17 +124,22 @@
             "name": "Name der Person",
             "ttl": "TTL (Minuten)",
             "authoritative_tracker": "Maßgeblicher Tracker (optional)",
+            "supporting_area_entity": "Unterstützende Bereichs-Entität (optional)",
+            "supporting_floor_entity": "Unterstützende Etagen-Entität (optional)",
             "description": "Beschreibung (optional)"
           },
           "data_description": {
-            "description": "Unterscheidungsmerkmale, z. B. Größe, Statur, Haare, Brille, Bart. Wird an die KI gesendet, damit sie Haushaltsmitglieder auch ohne sichtbares Gesicht unterscheiden kann."
+            "description": "Unterscheidungsmerkmale, z. B. Größe, Statur, Haare, Brille, Bart. Wird an die KI gesendet, damit sie Haushaltsmitglieder auch ohne sichtbares Gesicht unterscheiden kann.",
+            "supporting_area_entity": "Eine nachrangige Standortquelle auf Raumebene, z. B. der Bereichssensor eines BLE-Trackers. Ihr Zustand nennt einen Bereich (ID, Name oder Alias).",
+            "supporting_floor_entity": "Ihr Zustand nennt eine Etage (ID, Name oder Alias). Ohne sie wird die Etage des unterstützenden Bereichs verwendet."
           }
         }
       },
       "error": {
         "invalid_person_name": "Ungültiger Name. Namen dürfen nicht leer sein, keine Leerzeichen oder Pfadzeichen enthalten und werden als Ordnernamen verwendet.",
         "unique_person": "Diese Person ist bereits konfiguriert.",
-        "invalid_authoritative_tracker": "Der maßgebliche Tracker muss eine vorhandene device_tracker-Entität sein."
+        "invalid_authoritative_tracker": "Der maßgebliche Tracker muss eine vorhandene device_tracker-Entität sein.",
+        "invalid_supporting_entity": "Die unterstützende Tracker-Entität muss eine vorhandene Entität sein."
       },
       "abort": {
         "reconfigure_successful": "Die Neukonfiguration war erfolgreich."

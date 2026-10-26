@@ -45,6 +45,10 @@ class Person:
     # Optional distinguishing features (height, build, hair, ...), sent to
     # the AI alongside the reference images.
     description: str | None = None
+    # Optional Supporting tracker (ADR 0008): entities whose states name an
+    # HA area and an HA floor.
+    supporting_area_entity: str | None = None
+    supporting_floor_entity: str | None = None
     reference_images: list[Path] = field(default_factory=list)
 
     # Detection results — filled in by later tickets.

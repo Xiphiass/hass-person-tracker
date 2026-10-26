@@ -107,10 +107,14 @@
             "name": "Person name",
             "ttl": "TTL (minutes)",
             "authoritative_tracker": "Authoritative tracker (optional)",
+            "supporting_area_entity": "Supporting area entity (optional)",
+            "supporting_floor_entity": "Supporting floor entity (optional)",
             "description": "Description (optional)"
           },
           "data_description": {
-            "description": "Distinguishing features, e.g. height, build, hair, glasses, beard. Sent to the AI to help tell household members apart when the face is not visible."
+            "description": "Distinguishing features, e.g. height, build, hair, glasses, beard. Sent to the AI to help tell household members apart when the face is not visible.",
+            "supporting_area_entity": "A lower-priority, room-level location source, e.g. a BLE tracker's area sensor. Its state names an area (ID, name or alias).",
+            "supporting_floor_entity": "Its state names a floor (ID, name or alias). Without it, the floor of the supporting area is used."
           }
         },
         "reconfigure": {
@@ -120,17 +124,22 @@
             "name": "Person name",
             "ttl": "TTL (minutes)",
             "authoritative_tracker": "Authoritative tracker (optional)",
+            "supporting_area_entity": "Supporting area entity (optional)",
+            "supporting_floor_entity": "Supporting floor entity (optional)",
             "description": "Description (optional)"
           },
           "data_description": {
-            "description": "Distinguishing features, e.g. height, build, hair, glasses, beard. Sent to the AI to help tell household members apart when the face is not visible."
+            "description": "Distinguishing features, e.g. height, build, hair, glasses, beard. Sent to the AI to help tell household members apart when the face is not visible.",
+            "supporting_area_entity": "A lower-priority, room-level location source, e.g. a BLE tracker's area sensor. Its state names an area (ID, name or alias).",
+            "supporting_floor_entity": "Its state names a floor (ID, name or alias). Without it, the floor of the supporting area is used."
           }
         }
       },
       "error": {
         "invalid_person_name": "Invalid person name. Names must not be empty, may not contain whitespace or path characters, and are used as folder names.",
         "unique_person": "This person is already configured.",
-        "invalid_authoritative_tracker": "The authoritative tracker must be an existing device_tracker entity."
+        "invalid_authoritative_tracker": "The authoritative tracker must be an existing device_tracker entity.",
+        "invalid_supporting_entity": "The supporting tracker entity must be an existing entity."
       },
       "abort": {
         "reconfigure_successful": "Re-configuration was successful."

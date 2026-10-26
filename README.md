@@ -44,6 +44,11 @@ The integration is configured entirely through the Home Assistant UI:
    - Configure the detection cooldown period and the minimum confidence (default 0.7). Identifications the AI reports below the minimum confidence update no tracker; the snapshot is kept as an unknown snapshot instead. Raise the value if people get mixed up.
    - Choose whether to re-check before expiry (default on). A person who sits still triggers no new detection, so shortly before their sighting expires the camera that last saw them takes one more snapshot and the AI is asked about that person only. A confirmation keeps them at home; otherwise the sighting expires as usual. This costs one AI call per expiry while someone stays in view.
 4. After initial setup, you can add, edit, or remove persons from the integration's configuration page. Each person can have an optional description of distinguishing features (height, build, hair, glasses, ...), which is sent to the AI to help tell household members apart when the face is not visible.
+   Each person can also have an optional **supporting tracker**: a lower-priority, room-level location source such as a BLE tracker (e.g. Bermuda, ESPresense). It is configured as two optional entities from any integration:
+   - **Supporting area entity**: an entity whose state names a Home Assistant area (e.g. Bermuda's `sensor.<device>_area`). An `area_id` attribute naming a known area wins; otherwise the state is matched against area IDs, then names, then aliases, ignoring case.
+   - **Supporting floor entity**: an entity whose state names a Home Assistant floor, resolved the same way (`floor_id` attribute, then ID, name, aliases). Without it, the supporting floor is the floor of the supporting area.
+
+   States such as `unknown`, `unavailable`, `not_home` or `away`, or a state that matches no area or floor, mean no supporting location, even if an `area_id`/`floor_id` attribute is still set. For now the supporting tracker is only reported in the tracker's attributes; it does not change the tracker's state.
 5. For each person, place reference images in your Home Assistant configuration directory under `person_tracker/people/<person_name>/`. They are sent to the AI along with every camera snapshot to recognize who is who. Changes apply on the next detection, no reload needed. Each reference image adds to the size, and so the cost, of every AI request, so a few clear photos per person work best.
 
 ## Tracker attributes
@@ -60,8 +65,15 @@ Each person's tracker (`device_tracker.<person>`) is `home` while a sighting is 
 | `floor_id` | ID of that floor | Kept after expiry, if the area is on a floor |
 | `last_seen` | Time of the last sighting | Kept after expiry |
 | `last_camera` | Camera of the last sighting | Kept after expiry |
+| `supporting_area` | Display name of the supporting tracker's area | While the supporting area entity resolves to an area |
+| `supporting_area_id` | ID of that area | Same as `supporting_area` |
+| `supporting_floor` | Display name of the supporting tracker's floor | While a supporting floor resolves |
+| `supporting_floor_id` | ID of that floor | Same as `supporting_floor` |
+| `supporting_agrees` | `area` if the supporting area is the camera's area, `floor` if only the floor matches, otherwise `none` | Only while `home` and a supporting area or floor resolves |
 
 Area and floor are looked up live from the last seen area, so renaming an area or floor, or moving the area to another floor, shows on the tracker without a reload, also after expiry.
+
+The supporting attributes are resolved live too: they update whenever a supporting entity changes state or an area or floor is renamed.
 
 ## Requirements
 

@@ -6,7 +6,7 @@ Configuration is a UI config entry (ADR 0005):
   trigger binary sensors, and the AI task entity used for identification;
   editable via Reconfigure,
 - each person to track (identity + optional TTL + optional authoritative
-  tracker) is a config subentry of the entry.
+  and supporting trackers) is a config subentry of the entry.
 
 Reference images live on disk under
 ``<config>/person_tracker/people/<person>/`` (ADR 0005). They are re-read on
@@ -34,6 +34,8 @@ from .const import (
     CONF_MIN_CONFIDENCE,
     CONF_PERSON_NAME,
     CONF_RECHECK,
+    CONF_SUPPORTING_AREA_ENTITY,
+    CONF_SUPPORTING_FLOOR_ENTITY,
     CONF_TTL,
     CONF_TRIGGERS,
     DEFAULT_COOLDOWN_SECONDS,
@@ -135,6 +137,8 @@ async def _async_build_entry_data(
             ttl_minutes=subentry.data.get(CONF_TTL, DEFAULT_TTL_MINUTES),
             authoritative_tracker=subentry.data.get(CONF_AUTHORITATIVE_TRACKER),
             description=subentry.data.get(CONF_DESCRIPTION),
+            supporting_area_entity=subentry.data.get(CONF_SUPPORTING_AREA_ENTITY),
+            supporting_floor_entity=subentry.data.get(CONF_SUPPORTING_FLOOR_ENTITY),
         )
         person.reference_images = await hass.async_add_executor_job(
             discover_reference_images, hass, person.name

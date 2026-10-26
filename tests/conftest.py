@@ -118,6 +118,8 @@ def person(
     ttl: int = 30,
     authoritative_tracker: str | None = None,
     description: str | None = None,
+    supporting_area_entity: str | None = None,
+    supporting_floor_entity: str | None = None,
 ) -> ConfigSubentryData:
     """Build a person subentry."""
     data: dict[str, Any] = {const.CONF_PERSON_NAME: name, const.CONF_TTL: ttl}
@@ -125,6 +127,10 @@ def person(
         data[const.CONF_AUTHORITATIVE_TRACKER] = authoritative_tracker
     if description:
         data[const.CONF_DESCRIPTION] = description
+    if supporting_area_entity:
+        data[const.CONF_SUPPORTING_AREA_ENTITY] = supporting_area_entity
+    if supporting_floor_entity:
+        data[const.CONF_SUPPORTING_FLOOR_ENTITY] = supporting_floor_entity
     return ConfigSubentryData(
         data=data,
         subentry_type=const.SUBENTRY_PERSON,

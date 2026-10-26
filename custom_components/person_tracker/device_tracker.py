@@ -9,8 +9,11 @@ again once the TTL expires or the authoritative tracker demotes it (ADR
 0004). The room lives in the attributes: ``area`` while the sighting is
 current, ``last_location``/``last_seen`` retained throughout so staleness
 stays queryable; the area's floor follows the same rule (``floor`` vs
-``last_floor``/``floor_id``). The entity picture mirrors the picture of the
-HA person that tracks this entity, so dashboards can show the profile picture.
+``last_floor``/``floor_id``). The optional Supporting tracker (ADR 0008) is
+reported alongside: its area and floor, resolved live, and whether it agrees
+with the current camera sighting; it does not change the state (Issue #29).
+The entity picture mirrors the picture of the HA person that tracks this
+entity, so dashboards can show the profile picture.
 """
 
 from __future__ import annotations
@@ -43,11 +46,17 @@ from .const import (
     ATTR_LAST_FLOOR,
     ATTR_LAST_LOCATION,
     ATTR_LAST_SEEN,
+    ATTR_SUPPORTING_AGREES,
+    ATTR_SUPPORTING_AREA,
+    ATTR_SUPPORTING_AREA_ID,
+    ATTR_SUPPORTING_FLOOR,
+    ATTR_SUPPORTING_FLOOR_ID,
     DOMAIN,
     SIGNAL_TRACKER_UPDATE_PERSON,
 )
 from .lifetime import authoritative_reports_away, is_expired
 from .models import Person, PersonTrackerConfigEntry
+from .supporting import AreaOrFloor, resolve_area_or_floor, supporting_agrees
 
 
 async def async_setup_entry(
@@ -90,6 +99,7 @@ class PersonTrackerEntity(BaseScannerEntity):
         self._unsub_area: Callable[[], None] | None = None
         self._unsub_floor: Callable[[], None] | None = None
         self._unsub_authoritative: Callable[[], None] | None = None
+        self._unsub_supporting: Callable[[], None] | None = None
         self._unsub_ttl: Callable[[], None] | None = None
         self._unsub_person: Callable[[], None] | None = None
 
@@ -123,6 +133,13 @@ class PersonTrackerEntity(BaseScannerEntity):
                 self._async_republish,
             )
 
+        # Supporting tracker (ADR 0008): re-publish whenever either of its
+        # entities changes state.
+        if supporting := self._supporting_entities():
+            self._unsub_supporting = async_track_state_change_event(
+                self.hass, supporting, self._async_republish
+            )
+
         # Profile picture: follow any HA person that links (or unlinks) this
         # tracker or changes its picture.
         self._unsub_person = self.hass.bus.async_listen(
@@ -141,6 +158,7 @@ class PersonTrackerEntity(BaseScannerEntity):
             self._unsub_area,
             self._unsub_floor,
             self._unsub_authoritative,
+            self._unsub_supporting,
             self._unsub_ttl,
             self._unsub_person,
         ):
@@ -150,6 +168,7 @@ class PersonTrackerEntity(BaseScannerEntity):
         self._unsub_area = None
         self._unsub_floor = None
         self._unsub_authoritative = None
+        self._unsub_supporting = None
         self._unsub_ttl = None
         self._unsub_person = None
 
@@ -186,8 +205,16 @@ class PersonTrackerEntity(BaseScannerEntity):
     def _async_handle_area_registry_update(
         self, event: Event[ar.EventAreaRegistryUpdatedData]
     ) -> None:
-        """An area registry change; re-publish if it is our area."""
-        if event.data.get("area_id") != self._person.area_id:
+        """An area registry change; re-publish if it may affect us.
+
+        Any area change may change what the supporting entities resolve to
+        (a new name or alias), so with a supporting tracker every change
+        re-publishes.
+        """
+        if (
+            event.data.get("area_id") != self._person.area_id
+            and not self._supporting_entities()
+        ):
             return
         self.async_write_ha_state()
 
@@ -195,9 +222,11 @@ class PersonTrackerEntity(BaseScannerEntity):
     def _async_handle_floor_registry_update(
         self, event: Event[fr.EventFloorRegistryUpdatedData]
     ) -> None:
-        """A floor registry change; re-publish if it is our area's floor."""
+        """A floor registry change; re-publish if it may affect us."""
         floor = self._floor()
-        if floor is None or event.data.get("floor_id") != floor.floor_id:
+        if not self._supporting_entities() and (
+            floor is None or event.data.get("floor_id") != floor.floor_id
+        ):
             return
         self.async_write_ha_state()
 
@@ -265,12 +294,96 @@ class PersonTrackerEntity(BaseScannerEntity):
             return None
         return fr.async_get(self.hass).async_get_floor(area.floor_id)
 
+    def _supporting_entities(self) -> list[str]:
+        """The configured supporting area and floor entities."""
+        person = self._person
+        return [
+            entity_id
+            for entity_id in (
+                person.supporting_area_entity,
+                person.supporting_floor_entity,
+            )
+            if entity_id
+        ]
+
+    def _resolve_supporting(
+        self, entity_id: str | None, attribute: str, candidates: list[AreaOrFloor]
+    ) -> str | None:
+        """The ID of the area or floor *entity_id*'s state names, if any."""
+        if entity_id is None or (state := self.hass.states.get(entity_id)) is None:
+            return None
+        return resolve_area_or_floor(
+            state.state, state.attributes.get(attribute), candidates
+        )
+
+    def _supporting(self) -> tuple[ar.AreaEntry | None, fr.FloorEntry | None]:
+        """The live supporting area and floor (ADR 0008).
+
+        Without a floor entity, the floor is the supporting area's floor.
+        """
+        person = self._person
+        area_registry = ar.async_get(self.hass)
+        floor_registry = fr.async_get(self.hass)
+        area = None
+        area_id = self._resolve_supporting(
+            person.supporting_area_entity,
+            "area_id",
+            [
+                AreaOrFloor(entry.id, entry.name, frozenset(entry.aliases))
+                for entry in area_registry.async_list_areas()
+            ],
+        )
+        if area_id is not None:
+            area = area_registry.async_get_area(area_id)
+        if person.supporting_floor_entity:
+            floor_id = self._resolve_supporting(
+                person.supporting_floor_entity,
+                "floor_id",
+                [
+                    AreaOrFloor(entry.floor_id, entry.name, frozenset(entry.aliases))
+                    for entry in floor_registry.async_list_floors()
+                ],
+            )
+        else:
+            floor_id = area.floor_id if area is not None else None
+        floor = None
+        if floor_id is not None:
+            floor = floor_registry.async_get_floor(floor_id)
+        return area, floor
+
+    def _supporting_attributes(self, is_connected: bool | None) -> dict[str, Any]:
+        """The supporting area and floor, and whether they agree."""
+        if not self._supporting_entities():
+            return {}
+        attributes: dict[str, Any] = {}
+        area, floor = self._supporting()
+        if area is not None:
+            attributes[ATTR_SUPPORTING_AREA] = area.name
+            attributes[ATTR_SUPPORTING_AREA_ID] = area.id
+        if floor is not None:
+            attributes[ATTR_SUPPORTING_FLOOR] = floor.name
+            attributes[ATTR_SUPPORTING_FLOOR_ID] = floor.floor_id
+        if is_connected:
+            camera_floor = self._floor()
+            agrees = supporting_agrees(
+                self._person.area_id,
+                camera_floor.floor_id if camera_floor is not None else None,
+                area.id if area is not None else None,
+                floor.floor_id if floor is not None else None,
+            )
+            if agrees is not None:
+                attributes[ATTR_SUPPORTING_AGREES] = agrees
+        return attributes
+
     @property
     @override
     def extra_state_attributes(
         self,
     ) -> dict[str, Any] | None:  # pyright: ignore[reportIncompatibleVariableOverride]
-        """Current and last area and floor, their IDs, last seen and camera."""
+        """Current and last area and floor, their IDs, last seen and camera.
+
+        Plus the supporting tracker's area and floor, when configured.
+        """
         person = self._person
         attributes: dict[str, Any] = {}
         is_connected = self.is_connected
@@ -291,6 +404,7 @@ class PersonTrackerEntity(BaseScannerEntity):
             attributes[ATTR_AREA_ID] = person.area_id
         if person.last_camera is not None:
             attributes[ATTR_LAST_CAMERA] = person.last_camera
+        attributes |= self._supporting_attributes(is_connected)
         return attributes or None
 
 
