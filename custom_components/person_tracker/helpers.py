@@ -1,5 +1,6 @@
-"""HA-facing helpers: areas, the supporting location, AI task entity resolution, reference images,
-AI frames, last-seen person thumbnails, unknown snapshots."""
+"""HA-facing helpers: areas, the supporting location, AI task entity
+resolution, reference images, AI frames, last-seen person thumbnails,
+unknown snapshots."""
 
 from __future__ import annotations
 

@@ -478,17 +478,20 @@ class DetectionCoordinator:
             if person is None:
                 _LOGGER.debug("Ignoring unrecognized person %r.", hit["name"])
                 continue
-            confidence = self._boosted_confidence(
+            # Move checks (ADR 0009) must not be corroborated: the supporting
+            # tracker chose their camera, so the confirmation would be circular.
+            confidence = self._corroborated_confidence(
                 camera, area, person, hit["confidence"]
             )
             # Uncertain hits update no tracker; the sighting is then kept as
             # an unknown snapshot by the caller.
             if confidence < self._data.min_confidence:
                 _LOGGER.debug(
-                    "Ignoring %r on %s: confidence %.2f is below %.2f.",
+                    "Ignoring %r on %s: confidence %.2f (raw %.2f) is below %.2f.",
                     hit["name"],
                     camera.entity_id,
                     confidence,
+                    hit["confidence"],
                     self._data.min_confidence,
                 )
                 continue
@@ -504,7 +507,7 @@ class DetectionCoordinator:
             )
         return identified
 
-    def _boosted_confidence(
+    def _corroborated_confidence(
         self, camera: Camera, area: ar.AreaEntry, person: Person, confidence: float
     ) -> float:
         """*confidence* of *person* on *camera*, corroborated (ADR 0009).
