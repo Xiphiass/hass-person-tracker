@@ -32,6 +32,7 @@ from .const import (
     CONF_COOLDOWN,
     CONF_DESCRIPTION,
     CONF_MIN_CONFIDENCE,
+    CONF_MOVE_CHECK,
     CONF_PERSON_NAME,
     CONF_RECHECK,
     CONF_SUPPORTING_AREA_ENTITY,
@@ -40,6 +41,7 @@ from .const import (
     CONF_TRIGGERS,
     DEFAULT_COOLDOWN_SECONDS,
     DEFAULT_MIN_CONFIDENCE,
+    DEFAULT_MOVE_CHECK,
     DEFAULT_RECHECK,
     DEFAULT_TTL_MINUTES,
     DOMAIN,
@@ -192,4 +194,5 @@ async def _async_build_entry_data(
             entry.data.get(CONF_MIN_CONFIDENCE, DEFAULT_MIN_CONFIDENCE)
         ),
         recheck=bool(entry.data.get(CONF_RECHECK, DEFAULT_RECHECK)),
+        move_check=bool(entry.data.get(CONF_MOVE_CHECK, DEFAULT_MOVE_CHECK)),
     )

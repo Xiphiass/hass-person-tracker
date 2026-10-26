@@ -77,10 +77,13 @@ async def test_flow_creates_entry(
     )
     assert result["type"] is FlowResultType.FORM
     assert result["step_id"] == "detection"
-    cooldown_key, confidence_key, recheck_key = result["data_schema"].schema
+    cooldown_key, confidence_key, recheck_key, move_check_key = result[
+        "data_schema"
+    ].schema
     assert cooldown_key.description == {"suggested_value": 30}
     assert confidence_key.description == {"suggested_value": 0.7}
     assert recheck_key.description == {"suggested_value": True}
+    assert move_check_key.description == {"suggested_value": True}
 
     result = await _configure(
         hass,
@@ -89,6 +92,7 @@ async def test_flow_creates_entry(
             const.CONF_COOLDOWN: 45,
             const.CONF_MIN_CONFIDENCE: 0.8,
             const.CONF_RECHECK: False,
+            const.CONF_MOVE_CHECK: False,
         },
     )
     assert result["type"] is FlowResultType.CREATE_ENTRY
@@ -99,6 +103,7 @@ async def test_flow_creates_entry(
         const.CONF_COOLDOWN: 45,
         const.CONF_MIN_CONFIDENCE: 0.8,
         const.CONF_RECHECK: False,
+        const.CONF_MOVE_CHECK: False,
     }
     entry = hass.config_entries.async_entries(DOMAIN)[0]
     assert entry.data == result["data"]
@@ -126,6 +131,7 @@ async def test_flow_multiple_cameras(
             const.CONF_COOLDOWN: 30,
             const.CONF_MIN_CONFIDENCE: 0.7,
             const.CONF_RECHECK: True,
+            const.CONF_MOVE_CHECK: True,
         },
     )
     assert result["type"] is FlowResultType.CREATE_ENTRY
@@ -135,6 +141,7 @@ async def test_flow_multiple_cameras(
         const.CONF_COOLDOWN: 30,
         const.CONF_MIN_CONFIDENCE: 0.7,
         const.CONF_RECHECK: True,
+        const.CONF_MOVE_CHECK: True,
     }
 
 
@@ -344,18 +351,22 @@ async def test_reconfigure_ai_task(
 async def test_reconfigure_detection_settings(
     hass: HomeAssistant, default_ai_task: None, cameras: None
 ) -> None:
-    """Cooldown, minimum confidence and re-check are editable via Reconfigure."""
+    """The detection settings are editable via Reconfigure."""
     async with setup_entry(hass) as entry:
         result = await _to_camera_form(hass, entry)
         result = await _configure(hass, result, {"next_step_id": "detection"})
         assert result["step_id"] == "detection"
         # Nothing stored yet: the defaults are suggested.
-        cooldown_key, confidence_key, recheck_key = result["data_schema"].schema
+        cooldown_key, confidence_key, recheck_key, move_check_key = result[
+            "data_schema"
+        ].schema
         assert cooldown_key.description == {"suggested_value": 30}
         assert confidence_key.description == {"suggested_value": 0.7}
         assert recheck_key.description == {"suggested_value": True}
+        assert move_check_key.description == {"suggested_value": True}
         assert entry.runtime_data.min_confidence == 0.7
         assert entry.runtime_data.recheck is True
+        assert entry.runtime_data.move_check is True
 
         result = await _configure(
             hass,
@@ -364,6 +375,7 @@ async def test_reconfigure_detection_settings(
                 const.CONF_COOLDOWN: 120,
                 const.CONF_MIN_CONFIDENCE: 0.85,
                 const.CONF_RECHECK: False,
+                const.CONF_MOVE_CHECK: False,
             },
         )
         assert result["reason"] == "reconfigure_successful"
@@ -374,14 +386,19 @@ async def test_reconfigure_detection_settings(
         assert entry.runtime_data.min_confidence == 0.85
         assert entry.data[const.CONF_RECHECK] is False
         assert entry.runtime_data.recheck is False
+        assert entry.data[const.CONF_MOVE_CHECK] is False
+        assert entry.runtime_data.move_check is False
 
         # The stored values are now suggested.
         result = await _to_camera_form(hass, entry)
         result = await _configure(hass, result, {"next_step_id": "detection"})
-        cooldown_key, confidence_key, recheck_key = result["data_schema"].schema
+        cooldown_key, confidence_key, recheck_key, move_check_key = result[
+            "data_schema"
+        ].schema
         assert cooldown_key.description == {"suggested_value": 120}
         assert confidence_key.description == {"suggested_value": 0.85}
         assert recheck_key.description == {"suggested_value": False}
+        assert move_check_key.description == {"suggested_value": False}
 
 
 async def test_reconfigure_entry_in_setup_error(

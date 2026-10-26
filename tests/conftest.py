@@ -91,6 +91,7 @@ def entry_data(
     cooldown_seconds: int | None = None,
     min_confidence: float | None = None,
     recheck: bool | None = None,
+    move_check: bool | None = None,
 ) -> dict[str, Any]:
     """Build person_tracker config entry data (the global settings)."""
     data: dict[str, Any] = {
@@ -109,6 +110,8 @@ def entry_data(
         data[const.CONF_MIN_CONFIDENCE] = min_confidence
     if recheck is not None:
         data[const.CONF_RECHECK] = recheck
+    if move_check is not None:
+        data[const.CONF_MOVE_CHECK] = move_check
     return data
 
 

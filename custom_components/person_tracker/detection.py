@@ -18,6 +18,13 @@ within the re-check lead share one run. A person whom the supporting tracker
 leads after a move is left out (Issue #33 / ADR 0008): the re-check would
 snapshot the camera they left.
 
+Move check (Issue #34 / ADR 0008): once the supporting area settles on a new
+area that has cameras, and no camera sighting is newer than that change,
+every camera of the area not in cooldown is asked about the moved person
+only, worded like the re-check. A confirmation is a normal sighting (without
+the corroboration boost); a miss changes nothing. People moving into the
+same area at the same time share one run per camera.
+
 Corroboration (ADR 0009): once the AI has answered, a hit the Person's
 supporting tracker agrees with (same area, else same floor) is boosted
 before the minimum confidence comparison. The supporting tracker never
@@ -30,6 +37,7 @@ and the next trigger edge runs a fresh detection.
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta
 from functools import partial
@@ -59,6 +67,7 @@ from homeassistant.util import dt as dt_util
 
 from .const import (
     AI_TASK_INSTRUCTIONS,
+    AI_TASK_MOVE_CHECK_INSTRUCTIONS,
     AI_TASK_NAME,
     AI_TASK_RECHECK_INSTRUCTIONS,
     DOMAIN,
@@ -66,6 +75,7 @@ from .const import (
     PEOPLE_DIR,
     RECHECK_LEAD_SECONDS,
     SIGNAL_TRACKER_UPDATE_PERSON,
+    SUPPORTING_SETTLE_SECONDS,
     UNKNOWN_SNAPSHOT_CLEANUP_HOURS,
     UNKNOWN_SNAPSHOT_RETENTION_DAYS,
 )
@@ -73,7 +83,9 @@ from .helpers import (
     delete_frame,
     discover_reference_images,
     get_camera_area,
+    get_entity_area_id,
     get_leading_source,
+    get_supporting_changed,
     get_supporting_location,
     purge_unknown_snapshots,
     is_authoritative_away,
@@ -203,13 +215,13 @@ def _frame_id(path: Path) -> str:
     return f"media-source://{DOMAIN}/{FRAMES_DIR}/{path.name}"
 
 
-def _build_instructions(people: list[Person], *, recheck: bool = False) -> str:
+def _build_instructions(people: list[Person], *, preamble: str | None = None) -> str:
     """The identification prompt, listing the household members to look for.
 
     Describes the attachment order: the snapshot first, then each of
     *people*'s reference images in order, and appends the people's optional
-    descriptions. A *recheck* prompt (ADR 0007) adds the presence re-check
-    framing before the response instructions.
+    descriptions. A *preamble* (the re-check framing of ADR 0007, or the move
+    check's) goes before the response instructions.
     """
     names = ", ".join(sorted(person.name for person in people)) or "no one"
     descriptions = "; ".join(
@@ -224,8 +236,8 @@ def _build_instructions(people: list[Person], *, recheck: bool = False) -> str:
             "description alone, without a visible face, is low confidence."
         )
     task = AI_TASK_INSTRUCTIONS
-    if recheck:
-        task = f"{AI_TASK_RECHECK_INSTRUCTIONS} {task}"
+    if preamble:
+        task = f"{preamble} {task}"
     references: list[str] = []
     position = 2
     for person in people:
@@ -251,7 +263,8 @@ class DetectionCoordinator:
 
     Per-camera cooldown: after a detection run, further trigger edges of the
     same camera are ignored until the configured cooldown has elapsed.
-    Presence re-checks (ADR 0007) ignore the cooldown but claim it too.
+    Presence re-checks (ADR 0007) ignore the cooldown but claim it too;
+    move checks (Issue #34) leave out cameras in cooldown and claim it.
     """
 
     def __init__(self, hass: HomeAssistant, data: PersonTrackerData) -> None:
@@ -262,6 +275,8 @@ class DetectionCoordinator:
         self._unsubscribes: list[Callable[[], None]] = []
         # Pending presence re-check timers, keyed by person subentry ID.
         self._recheck_timers: dict[str, Callable[[], None]] = {}
+        # Pending move check timers (Issue #34), keyed by person subentry ID.
+        self._move_check_timers: dict[str, Callable[[], None]] = {}
 
     @property
     def cooldown_seconds(self) -> int:
@@ -278,6 +293,19 @@ class DetectionCoordinator:
                     self._hass, camera.triggers, self._async_on_trigger
                 )
             )
+        # Move checks (Issue #34) start when a supporting area entity changes.
+        if self._data.move_check and (
+            supporting := [
+                p.supporting_area_entity
+                for p in self._data.people.values()
+                if p.supporting_area_entity
+            ]
+        ):
+            self._unsubscribes.append(
+                async_track_state_change_event(
+                    self._hass, supporting, self._async_on_supporting_change
+                )
+            )
         # Unknown snapshots live for a fixed retention window (Issue #4):
         # purge once now (catches files from a long shutdown), then daily.
         await self._async_purge_unknown_snapshots()
@@ -290,11 +318,16 @@ class DetectionCoordinator:
         )
 
     def async_stop(self) -> None:
-        """Unsubscribe all triggers and re-check timers (entry unload)."""
-        for unsub in (*self._unsubscribes, *self._recheck_timers.values()):
+        """Unsubscribe all triggers and pending timers (entry unload)."""
+        for unsub in (
+            *self._unsubscribes,
+            *self._recheck_timers.values(),
+            *self._move_check_timers.values(),
+        ):
             unsub()
         self._unsubscribes = []
         self._recheck_timers = {}
+        self._move_check_timers = {}
 
     def _camera_for_trigger(self, trigger_entity_id: str) -> Camera | None:
         """The camera whose trigger list contains *trigger_entity_id*."""
@@ -317,14 +350,18 @@ class DetectionCoordinator:
         camera = self._camera_for_trigger(event.data["entity_id"])
         if camera is None:
             return
-        last = self._last_run.get(camera.entity_id)
-        if (
-            last is not None
-            and (dt_util.now() - last).total_seconds() < self._data.cooldown_seconds
-        ):
+        if self._in_cooldown(camera, dt_util.now()):
             _LOGGER.debug("Skipping detection run for %s (cooldown).", camera.entity_id)
             return
         await self._async_run(camera, partial(self._async_detect, camera))
+
+    def _in_cooldown(self, camera: Camera, now: datetime) -> bool:
+        """Whether *camera* ran within the cooldown as of *now*."""
+        last = self._last_run.get(camera.entity_id)
+        return (
+            last is not None
+            and (now - last).total_seconds() < self._data.cooldown_seconds
+        )
 
     async def _async_run(
         self, camera: Camera, run: Callable[[], Awaitable[bool]]
@@ -397,11 +434,12 @@ class DetectionCoordinator:
         return True
 
     async def _async_identify(
-        self, camera: Camera, people: list[Person], *, recheck: bool = False
+        self, camera: Camera, people: list[Person], *, preamble: str | None = None
     ) -> tuple[Image, Any, list[dict[str, Any]]] | None:
         """Snapshot *camera* and ask the AI which of *people* it shows.
 
-        Only *people*'s reference images are attached. Returns the snapshot,
+        Only *people*'s reference images are attached; *preamble* frames a
+        re-check or move check prompt. Returns the snapshot,
         the raw AI data and the normalized hits, or None when the snapshot
         or the AI call failed (logged; Issue #5).
         """
@@ -437,7 +475,7 @@ class DetectionCoordinator:
                 self._hass,
                 task_name=AI_TASK_NAME,
                 entity_id=self._data.ai_task_entity_id,
-                instructions=_build_instructions(people, recheck=recheck),
+                instructions=_build_instructions(people, preamble=preamble),
                 structure=AI_RESULT_STRUCTURE,
                 attachments=attachments,
             )
@@ -468,12 +506,14 @@ class DetectionCoordinator:
         image: Image,
         hits: list[dict[str, Any]],
         people: list[Person],
+        *,
+        corroborate: bool = True,
     ) -> list[Person]:
         """Record a sighting on *camera* for each confident hit among *people*.
 
-        A hit the person's supporting tracker agrees with is boosted before
-        the minimum confidence comparison (ADR 0009). Returns the identified
-        people.
+        When *corroborate*, a hit the person's supporting tracker agrees with
+        is boosted before the minimum confidence comparison (ADR 0009).
+        Returns the identified people.
         """
         identified: list[Person] = []
         now = dt_util.now()
@@ -482,11 +522,11 @@ class DetectionCoordinator:
             if person is None:
                 _LOGGER.debug("Ignoring unrecognized person %r.", hit["name"])
                 continue
-            # Move checks (ADR 0009) must not be corroborated: the supporting
-            # tracker chose their camera, so the confirmation would be circular.
-            confidence = self._corroborated_confidence(
-                camera, area, person, hit["confidence"]
-            )
+            confidence = hit["confidence"]
+            if corroborate:
+                confidence = self._corroborated_confidence(
+                    camera, area, person, confidence
+                )
             # Uncertain hits update no tracker; the sighting is then kept as
             # an unknown snapshot by the caller.
             if confidence < self._data.min_confidence:
@@ -640,7 +680,9 @@ class DetectionCoordinator:
         people = [person for person in people if person.reference_images]
         if not people:
             return True
-        outcome = await self._async_identify(camera, people, recheck=True)
+        outcome = await self._async_identify(
+            camera, people, preamble=AI_TASK_RECHECK_INSTRUCTIONS
+        )
         if outcome is None:
             return False
         image, _data, hits = outcome
@@ -648,6 +690,129 @@ class DetectionCoordinator:
         if missing := [person.name for person in people if person not in confirmed]:
             _LOGGER.debug(
                 "Re-check on %s did not confirm %s; letting the sighting expire.",
+                camera.entity_id,
+                ", ".join(missing),
+            )
+        return True
+
+    async def _async_on_supporting_change(
+        self, event: Event[EventStateChangedData]
+    ) -> None:
+        """A supporting area entity changed: (re)schedule its move checks.
+
+        Only a changed state is a move; attribute updates keep the timer.
+        """
+        old_state = event.data["old_state"]
+        new_state = event.data["new_state"]
+        if new_state is None or old_state is None or old_state.state == new_state.state:
+            return
+        settled = new_state.last_changed + timedelta(seconds=SUPPORTING_SETTLE_SECONDS)
+        for person in self._data.people.values():
+            if person.supporting_area_entity != event.data["entity_id"]:
+                continue
+            self._cancel_move_check(person)
+            self._move_check_timers[person.subentry_id] = async_track_point_in_utc_time(
+                self._hass, partial(self._async_on_move_check_due, person), settled
+            )
+
+    def _cancel_move_check(self, person: Person) -> None:
+        """Cancel *person*'s pending move check, if any."""
+        if unsub := self._move_check_timers.pop(person.subentry_id, None):
+            unsub()
+
+    def _move_check_area(self, person: Person, now: datetime) -> ar.AreaEntry | None:
+        """The area a settled move took *person* to, if it needs a move check.
+
+        That is while the supporting tracker leads (so not when the
+        authoritative tracker reports them away, nor when a current camera
+        sighting already places them there) and no camera sighting is newer
+        than the move.
+        """
+        changed = get_supporting_changed(self._hass, person)
+        if (
+            changed is None
+            or now - changed < timedelta(seconds=SUPPORTING_SETTLE_SECONDS)
+            or (person.last_seen is not None and person.last_seen >= changed)
+        ):
+            return None
+        area, _ = get_supporting_location(self._hass, person)
+        if get_leading_source(self._hass, person, area) != SOURCE_SUPPORTING:
+            return None
+        return area
+
+    async def _async_on_move_check_due(self, person: Person, _now: datetime) -> None:
+        """*person*'s supporting move settled: ask that area's cameras.
+
+        Everyone else whose move into the same area settled by now joins the
+        run. Cameras in cooldown are left out: their recent run already
+        answered.
+        """
+        self._move_check_timers.pop(person.subentry_id, None)
+        now = dt_util.now()
+        if (area := self._move_check_area(person, now)) is None:
+            return
+        cameras = [
+            camera
+            for camera in self._data.cameras.values()
+            if get_entity_area_id(self._hass, camera.entity_id) == area.id
+        ]
+        if not cameras:
+            return
+        people = [person]
+        for other in self._data.people.values():
+            if (
+                other is person
+                or other.subentry_id not in self._move_check_timers
+                or (other_area := self._move_check_area(other, now)) is None
+                or other_area.id != area.id
+            ):
+                continue
+            self._cancel_move_check(other)
+            people.append(other)
+        await self._async_refresh_reference_images()
+        # Without reference photos a narrowed question can only be answered
+        # by guessing.
+        people = [p for p in people if p.reference_images]
+        if not people:
+            return
+        if not (cameras := [c for c in cameras if not self._in_cooldown(c, now)]):
+            _LOGGER.debug(
+                "Skipping the move check in %s: every camera is in cooldown.",
+                area.name,
+            )
+            return
+        await asyncio.gather(
+            *(
+                self._async_run(
+                    camera, partial(self._async_move_check, camera, area, people)
+                )
+                for camera in cameras
+            )
+        )
+
+    async def _async_move_check(
+        self, camera: Camera, area: ar.AreaEntry, people: list[Person]
+    ) -> bool:
+        """Ask the AI whether *people* are on *camera* (Issue #34).
+
+        A confirmation is a normal sighting, but not corroborated: the
+        supporting tracker chose the camera and the people, so its agreement
+        would be circular. A miss changes nothing and nothing is saved as an
+        unknown snapshot. Returns False when the run failed, True otherwise.
+        """
+        outcome = await self._async_identify(
+            camera, people, preamble=AI_TASK_MOVE_CHECK_INSTRUCTIONS
+        )
+        if outcome is None:
+            return False
+        image, _data, hits = outcome
+        confirmed = await self._async_apply_hits(
+            camera, area, image, hits, people, corroborate=False
+        )
+        if missing := [person.name for person in people if person not in confirmed]:
+            _LOGGER.debug(
+                "Move check on %s did not confirm %s; the supporting tracker "
+                "keeps leading.",
                 camera.entity_id,
                 ", ".join(missing),
             )
