@@ -76,7 +76,7 @@ from .helpers import (
     get_leading_source,
     get_supporting_location,
     purge_unknown_snapshots,
-    reports_away,
+    is_authoritative_away,
     save_frame,
     save_person_thumbnail,
     save_unknown_snapshot,
@@ -589,18 +589,19 @@ class DetectionCoordinator:
                 or due is None
                 or due > now + self._recheck_lead(other)
                 or is_expired(other.last_seen, other.ttl, now)
-                or reports_away(self._hass, other)
+                or is_authoritative_away(self._hass, other)
             ):
                 continue
+            # Cancelled first, so a skipped person is not re-checked later.
             self._cancel_recheck(other)
-            if self._moved_away(other):
+            if self._supporting_leads_after_move(other):
                 continue
             people.append(other)
         if not people:
             return
         await self._async_run(camera, partial(self._async_recheck, camera, people))
 
-    def _moved_away(self, person: Person) -> bool:
+    def _supporting_leads_after_move(self, person: Person) -> bool:
         """Whether the supporting tracker leads *person* after a move.
 
         Only called for a current sighting, so the supporting tracker can

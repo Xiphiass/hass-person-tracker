@@ -9,8 +9,11 @@ expiry times.
 
 from __future__ import annotations
 
+import logging
 from datetime import timedelta
 from pathlib import Path
+
+import pytest
 
 from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
@@ -38,7 +41,11 @@ BOB_AREA_ENTITY = "sensor.bob_area"
 
 
 async def test_recheck_skipped_after_a_settled_move(
-    hass: HomeAssistant, default_ai_task: None, reference_images_dir: Path, freezer
+    hass: HomeAssistant,
+    default_ai_task: None,
+    reference_images_dir: Path,
+    freezer,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     """Seen in the garden, then settled in the bedroom: no re-check runs.
 
@@ -64,8 +71,11 @@ async def test_recheck_skipped_after_a_settled_move(
             hass.states.async_set(AREA_ENTITY, "Bedroom")
             await _move_to(hass, freezer, seen + timedelta(minutes=3))
 
-            await _move_to(hass, freezer, seen + TTL - LEAD)
+            with caplog.at_level(logging.DEBUG):
+                await _move_to(hass, freezer, seen + TTL - LEAD)
             assert ai_mock.await_count == 1
+            assert "Skipping the re-check of Alice" in caplog.text
+            assert "Bedroom" in caplog.text
 
             # No retry: the sighting expires, the supporting tracker leads.
             await _move_to(hass, freezer, seen + TTL + timedelta(minutes=1))

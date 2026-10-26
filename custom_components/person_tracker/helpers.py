@@ -132,7 +132,7 @@ def get_supporting_changed(hass: HomeAssistant, person: Person) -> datetime | No
     return state.last_changed
 
 
-def reports_away(hass: HomeAssistant, person: Person) -> bool:
+def is_authoritative_away(hass: HomeAssistant, person: Person) -> bool:
     """Whether *person*'s authoritative tracker reports them away."""
     if not person.authoritative_tracker:
         return False
@@ -151,7 +151,7 @@ def get_leading_source(
     now = dt_util.now()
     return leading_source(
         # Authoritative demotion (ADR 0004).
-        authoritative_away=reports_away(hass, person),
+        authoritative_away=is_authoritative_away(hass, person),
         # TTL expiry (ADR 0004): no camera sighting within the person's TTL.
         camera_current=not is_expired(person.last_seen, person.ttl, now),
         has_supporting_area=supporting_area is not None,
