@@ -16,6 +16,11 @@ only their reference images). A confirmation refreshes the sighting; anything
 else lets the TTL expire as before. People of the same camera who are due
 within the re-check lead share one run.
 
+Corroboration (ADR 0009): once the AI has answered, a hit the Person's
+supporting tracker agrees with (same area, else same floor) is boosted
+before the minimum confidence comparison. The supporting tracker never
+reaches the AI prompt, so the camera stays an independent check.
+
 Failure policy (Issue #5): a failed snapshot or a failed AI call logs an
 error and aborts the run — no tracker state changes, no retry is scheduled,
 and the next trigger edge runs a fresh detection.
@@ -66,6 +71,7 @@ from .helpers import (
     delete_frame,
     discover_reference_images,
     get_camera_area,
+    get_supporting_location,
     purge_unknown_snapshots,
     save_frame,
     save_person_thumbnail,
@@ -73,6 +79,7 @@ from .helpers import (
 )
 from .lifetime import authoritative_reports_away, is_expired
 from .models import Camera, Person, PersonTrackerData, person_slug
+from .supporting import boosted_confidence
 
 _LOGGER = getLogger(__package__)
 
@@ -460,28 +467,33 @@ class DetectionCoordinator:
     ) -> list[Person]:
         """Record a sighting on *camera* for each confident hit among *people*.
 
-        Returns the identified people.
+        A hit the person's supporting tracker agrees with is boosted before
+        the minimum confidence comparison (ADR 0009). Returns the identified
+        people.
         """
-        # Uncertain hits update no tracker; the sighting is then kept as an
-        # unknown snapshot by the caller.
-        accepted = []
-        for hit in hits:
-            if hit["confidence"] >= self._data.min_confidence:
-                accepted.append(hit)
-            else:
-                _LOGGER.debug(
-                    "Ignoring %r on %s: confidence %.2f is below %.2f.",
-                    hit["name"],
-                    camera.entity_id,
-                    hit["confidence"],
-                    self._data.min_confidence,
-                )
         identified: list[Person] = []
         now = dt_util.now()
-        for hit in accepted:
+        for hit in hits:
             person = _find_person(people, hit["name"])
             if person is None:
                 _LOGGER.debug("Ignoring unrecognized person %r.", hit["name"])
+                continue
+            # Move checks (ADR 0009) must not be corroborated: the supporting
+            # tracker chose their camera, so the confirmation would be circular.
+            confidence = self._corroborated_confidence(
+                camera, area, person, hit["confidence"]
+            )
+            # Uncertain hits update no tracker; the sighting is then kept as
+            # an unknown snapshot by the caller.
+            if confidence < self._data.min_confidence:
+                _LOGGER.debug(
+                    "Ignoring %r on %s: confidence %.2f (raw %.2f) is below %.2f.",
+                    hit["name"],
+                    camera.entity_id,
+                    confidence,
+                    hit["confidence"],
+                    self._data.min_confidence,
+                )
                 continue
             identified.append(person)
             person.location = area.name
@@ -494,6 +506,33 @@ class DetectionCoordinator:
                 self._hass, f"{SIGNAL_TRACKER_UPDATE_PERSON}{person.subentry_id}"
             )
         return identified
+
+    def _corroborated_confidence(
+        self, camera: Camera, area: ar.AreaEntry, person: Person, confidence: float
+    ) -> float:
+        """*confidence* of *person* on *camera*, corroborated (ADR 0009).
+
+        The supporting tracker is read only now, after Identification, so
+        it never reaches the AI.
+        """
+        supporting_area, supporting_floor = get_supporting_location(self._hass, person)
+        boosted = boosted_confidence(
+            confidence,
+            area.id,
+            area.floor_id,
+            supporting_area.id if supporting_area else None,
+            supporting_floor.floor_id if supporting_floor else None,
+        )
+        if boosted != confidence:
+            _LOGGER.debug(
+                "Supporting tracker agrees with %s on %s: confidence %.2f "
+                "boosted to %.2f.",
+                person.name,
+                camera.entity_id,
+                confidence,
+                boosted,
+            )
+        return boosted
 
     def _recheck_lead(self, person: Person) -> timedelta:
         """How long before *person*'s expiry their re-check runs (ADR 0007)."""

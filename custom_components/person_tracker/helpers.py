@@ -1,5 +1,6 @@
-"""HA-facing helpers: areas, AI task entity resolution, reference images,
-AI frames, last-seen person thumbnails, unknown snapshots."""
+"""HA-facing helpers: areas, the supporting location, AI task entity
+resolution, reference images, AI frames, last-seen person thumbnails,
+unknown snapshots."""
 
 from __future__ import annotations
 
@@ -17,6 +18,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import area_registry as ar
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers import floor_registry as fr
 from homeassistant.util import dt as dt_util
 
 from .const import (
@@ -30,7 +32,8 @@ from .const import (
     THUMBNAILS_DIR,
     UNKNOWN_SNAPSHOTS_DIR,
 )
-from .models import person_slug
+from .models import Person, person_slug
+from .supporting import AreaOrFloor, resolve_area_or_floor
 
 _LOGGER = getLogger(__package__)
 
@@ -59,6 +62,59 @@ def get_camera_area(hass: HomeAssistant, entity_id: str) -> ar.AreaEntry | None:
     if (area_id := get_entity_area_id(hass, entity_id)) is None:
         return None
     return ar.async_get(hass).async_get_area(area_id)
+
+
+def _resolve_supporting(
+    hass: HomeAssistant,
+    entity_id: str | None,
+    attribute: str,
+    candidates: list[AreaOrFloor],
+) -> str | None:
+    """The ID of the area or floor *entity_id*'s state names, if any."""
+    if entity_id is None or (state := hass.states.get(entity_id)) is None:
+        return None
+    return resolve_area_or_floor(
+        state.state, state.attributes.get(attribute), candidates
+    )
+
+
+def get_supporting_location(
+    hass: HomeAssistant, person: Person
+) -> tuple[ar.AreaEntry | None, fr.FloorEntry | None]:
+    """*person*'s live supporting area and floor (ADR 0008).
+
+    Without a floor entity, the floor is the supporting area's floor.
+    """
+    area_registry = ar.async_get(hass)
+    floor_registry = fr.async_get(hass)
+    area = None
+    area_id = _resolve_supporting(
+        hass,
+        person.supporting_area_entity,
+        "area_id",
+        [
+            AreaOrFloor(entry.id, entry.name, frozenset(entry.aliases))
+            for entry in area_registry.async_list_areas()
+        ],
+    )
+    if area_id is not None:
+        area = area_registry.async_get_area(area_id)
+    if person.supporting_floor_entity:
+        floor_id = _resolve_supporting(
+            hass,
+            person.supporting_floor_entity,
+            "floor_id",
+            [
+                AreaOrFloor(entry.floor_id, entry.name, frozenset(entry.aliases))
+                for entry in floor_registry.async_list_floors()
+            ],
+        )
+    else:
+        floor_id = area.floor_id if area is not None else None
+    floor = None
+    if floor_id is not None:
+        floor = floor_registry.async_get_floor(floor_id)
+    return area, floor
 
 
 def is_entity_pending(hass: HomeAssistant, entity_id: str) -> bool:

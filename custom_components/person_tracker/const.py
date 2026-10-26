@@ -54,6 +54,12 @@ RECHECK_LEAD_SECONDS = 60
 # last camera sighting and has held this long leads over the current sighting,
 # because the person moved somewhere the cameras did not see.
 SUPPORTING_SETTLE_SECONDS = 120
+# Supporting tracker corroboration (Issue #32 / ADR 0009): after
+# Identification, a hit on a camera in the supporting area gains the area
+# boost, else one on the supporting floor gains the floor boost, before the
+# minimum confidence comparison. Never cumulative, capped at 1.0.
+SUPPORTING_AREA_BOOST = 0.15
+SUPPORTING_FLOOR_BOOST = 0.05
 
 # Reference images (ADR 0005): user-placed files under
 # <config>/person_tracker/people/<person>/<file>.
