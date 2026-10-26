@@ -3,15 +3,18 @@
 One device (entry_type=SERVICE) and one device_tracker entity per known
 person (ADR 0002), both tied to the person's config subentry so removing the
 person removes them. The entity is a presence (connection) tracker in
-``zone.home``: the state is "home" while a sighting is current, so a linked
-HA person is recorded at home, and "unknown" until the first sighting and
-again once the TTL expires or the authoritative tracker demotes it (ADR
-0004). The room lives in the attributes: ``area`` while the sighting is
+``zone.home``: the state is "home" while a camera sighting is current, so a
+linked HA person is recorded at home, and otherwise "unknown" (before the
+first sighting, after the TTL expires, or once the authoritative tracker
+demotes it, ADR 0004) unless the Supporting tracker falls back, see below. The room lives in the attributes: ``area`` while the sighting is
 current, ``last_location``/``last_seen`` retained throughout so staleness
 stays queryable; the area's floor follows the same rule (``floor`` vs
 ``last_floor``/``floor_id``). The optional Supporting tracker (ADR 0008) is
 reported alongside: its area and floor, resolved live, and whether it agrees
-with the current camera sighting; it does not change the state (Issue #29).
+with the current camera sighting (Issue #29). Once the camera sighting is
+not current, a supporting area keeps the state "home" with ``area`` and
+``floor`` from the supporting tracker, and ``source`` names which source
+leads (Issue #30); the ``last_*`` attributes stay the camera's.
 The entity picture mirrors the picture of the HA person that tracks this
 entity, so dashboards can show the profile picture.
 """
@@ -46,6 +49,7 @@ from .const import (
     ATTR_LAST_FLOOR,
     ATTR_LAST_LOCATION,
     ATTR_LAST_SEEN,
+    ATTR_SOURCE,
     ATTR_SUPPORTING_AGREES,
     ATTR_SUPPORTING_AREA,
     ATTR_SUPPORTING_AREA_ID,
@@ -54,7 +58,13 @@ from .const import (
     DOMAIN,
     SIGNAL_TRACKER_UPDATE_PERSON,
 )
-from .lifetime import authoritative_reports_away, is_expired
+from .lifetime import (
+    SOURCE_CAMERA,
+    SOURCE_SUPPORTING,
+    authoritative_reports_away,
+    is_expired,
+    leading_source,
+)
 from .models import Person, PersonTrackerConfigEntry
 from .supporting import AreaOrFloor, resolve_area_or_floor, supporting_agrees
 
@@ -258,23 +268,29 @@ class PersonTrackerEntity(BaseScannerEntity):
     @property
     @override
     def is_connected(self) -> bool | None:
-        """True while a sighting is current; None (unknown) otherwise."""
-        person = self._person
+        """True while a source places the person at home; None otherwise."""
+        area, _ = self._supporting()
+        return True if self._leading_source(area) is not None else None
 
-        # 1. Authoritative demotion (ADR 0004): the person's phone says they
-        # are away from home, so the camera sighting is no longer believed.
+    def _leading_source(self, supporting_area: ar.AreaEntry | None) -> str | None:
+        """Which source leads (ADR 0008); the rule is ``leading_source``."""
+        person = self._person
+        # Authoritative demotion (ADR 0004): the person's phone says they are
+        # away from home, so neither the camera nor the supporting tracker is
+        # believed.
+        away = False
         if person.authoritative_tracker:
             tracker_state = self.hass.states.get(person.authoritative_tracker)
-            if tracker_state is not None and authoritative_reports_away(
+            away = tracker_state is not None and authoritative_reports_away(
                 tracker_state.state
-            ):
-                return None
-
-        # 2. TTL expiry (ADR 0004): no sighting within the person's TTL.
-        if is_expired(person.last_seen, person.ttl, dt_util.now()):
-            return None
-
-        return True
+            )
+        # TTL expiry (ADR 0004): no camera sighting within the person's TTL.
+        camera_current = not is_expired(person.last_seen, person.ttl, dt_util.now())
+        return leading_source(
+            authoritative_away=away,
+            camera_current=camera_current,
+            has_supporting_area=supporting_area is not None,
+        )
 
     def _area_name(self) -> str | None:
         """The live display name of the last seen area, so renames show."""
@@ -351,19 +367,23 @@ class PersonTrackerEntity(BaseScannerEntity):
             floor = floor_registry.async_get_floor(floor_id)
         return area, floor
 
-    def _supporting_attributes(self, is_connected: bool | None) -> dict[str, Any]:
+    def _supporting_attributes(
+        self,
+        area: ar.AreaEntry | None,
+        floor: fr.FloorEntry | None,
+        camera_leads: bool,
+    ) -> dict[str, Any]:
         """The supporting area and floor, and whether they agree."""
         if not self._supporting_entities():
             return {}
         attributes: dict[str, Any] = {}
-        area, floor = self._supporting()
         if area is not None:
             attributes[ATTR_SUPPORTING_AREA] = area.name
             attributes[ATTR_SUPPORTING_AREA_ID] = area.id
         if floor is not None:
             attributes[ATTR_SUPPORTING_FLOOR] = floor.name
             attributes[ATTR_SUPPORTING_FLOOR_ID] = floor.floor_id
-        if is_connected:
+        if camera_leads:
             camera_floor = self._floor()
             agrees = supporting_agrees(
                 self._person.area_id,
@@ -382,19 +402,30 @@ class PersonTrackerEntity(BaseScannerEntity):
     ) -> dict[str, Any] | None:  # pyright: ignore[reportIncompatibleVariableOverride]
         """Current and last area and floor, their IDs, last seen and camera.
 
-        Plus the supporting tracker's area and floor, when configured.
+        Plus the leading source, and the supporting tracker's area and floor
+        when configured. While the supporting tracker leads, ``area`` and
+        ``floor`` are its own; the ``last_*`` attributes stay the camera's.
         """
         person = self._person
         attributes: dict[str, Any] = {}
-        is_connected = self.is_connected
+        supporting_area, supporting_floor = self._supporting()
+        source = self._leading_source(supporting_area)
+        camera_leads = source == SOURCE_CAMERA
+        if camera_leads:
+            attributes[ATTR_SOURCE] = SOURCE_CAMERA
+        elif source == SOURCE_SUPPORTING and supporting_area is not None:
+            attributes[ATTR_SOURCE] = person.supporting_area_entity
+            attributes[ATTR_AREA] = supporting_area.name
+            if supporting_floor is not None:
+                attributes[ATTR_FLOOR] = supporting_floor.name
         area_name = self._area_name()
         if area_name is not None:
-            if is_connected:
+            if camera_leads:
                 attributes[ATTR_AREA] = area_name
             attributes[ATTR_LAST_LOCATION] = area_name
         floor = self._floor()
         if floor is not None:
-            if is_connected:
+            if camera_leads:
                 attributes[ATTR_FLOOR] = floor.name
             attributes[ATTR_LAST_FLOOR] = floor.name
             attributes[ATTR_FLOOR_ID] = floor.floor_id
@@ -404,7 +435,9 @@ class PersonTrackerEntity(BaseScannerEntity):
             attributes[ATTR_AREA_ID] = person.area_id
         if person.last_camera is not None:
             attributes[ATTR_LAST_CAMERA] = person.last_camera
-        attributes |= self._supporting_attributes(is_connected)
+        attributes |= self._supporting_attributes(
+            supporting_area, supporting_floor, camera_leads
+        )
         return attributes or None
 
 

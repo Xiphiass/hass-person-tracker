@@ -48,19 +48,22 @@ The integration is configured entirely through the Home Assistant UI:
    - **Supporting area entity**: an entity whose state names a Home Assistant area (e.g. Bermuda's `sensor.<device>_area`). An `area_id` attribute naming a known area wins; otherwise the state is matched against area IDs, then names, then aliases, ignoring case.
    - **Supporting floor entity**: an entity whose state names a Home Assistant floor, resolved the same way (`floor_id` attribute, then ID, name, aliases). Without it, the supporting floor is the floor of the supporting area.
 
-   States such as `unknown`, `unavailable`, `not_home` or `away`, or a state that matches no area or floor, mean no supporting location, even if an `area_id`/`floor_id` attribute is still set. For now the supporting tracker is only reported in the tracker's attributes; it does not change the tracker's state.
+   States such as `unknown`, `unavailable`, `not_home` or `away`, or a state that matches no area or floor, mean no supporting location, even if an `area_id`/`floor_id` attribute is still set.
+
+   The camera leads while its sighting is current. Once the sighting has expired (or before the person was ever seen), a supporting area keeps the tracker `home` in that area, so the person stays at home while out of the cameras' view. A supporting floor without an area gives no presence, as a floor alone is too coarse. The authoritative tracker still outranks everything: when it reports the person away, the tracker is `unknown` even if the supporting tracker still reports an area (e.g. a BLE tag left at home).
 5. For each person, place reference images in your Home Assistant configuration directory under `person_tracker/people/<person_name>/`. They are sent to the AI along with every camera snapshot to recognize who is who. Changes apply on the next detection, no reload needed. Each reference image adds to the size, and so the cost, of every AI request, so a few clear photos per person work best.
 
 ## Tracker attributes
 
-Each person's tracker (`device_tracker.<person>`) is `home` while a sighting is current and `unknown` once it expires (TTL) or the authoritative tracker reports the person away. It carries these attributes:
+Each person's tracker (`device_tracker.<person>`) is `home` while a camera sighting is current or, after that, while the supporting tracker reports an area. It is `unknown` otherwise, and whenever the authoritative tracker reports the person away. It carries these attributes:
 
 | Attribute | Description | Present |
 | --- | --- | --- |
-| `area` | Display name of the area the person was seen in | Only while `home` |
-| `last_location` | Display name of the area the person was last seen in | Kept after expiry |
+| `source` | `camera` while the camera sighting leads, otherwise the ID of the supporting area entity | Only while `home` |
+| `area` | Display name of the area the person is in: the camera's area, or the supporting area while the supporting tracker leads | Only while `home` |
+| `floor` | Display name of that area's floor: the camera area's floor, or the supporting floor while the supporting tracker leads | Only while `home`, and only if there is a floor |
+| `last_location` | Display name of the area the person was last seen in by a camera | Kept after expiry |
 | `area_id` | ID of that area | Kept after expiry |
-| `floor` | Display name of that area's floor | Only while `home`, and only if the area is on a floor |
 | `last_floor` | Display name of that area's floor | Kept after expiry, if the area is on a floor |
 | `floor_id` | ID of that floor | Kept after expiry, if the area is on a floor |
 | `last_seen` | Time of the last sighting | Kept after expiry |
@@ -69,9 +72,9 @@ Each person's tracker (`device_tracker.<person>`) is `home` while a sighting is 
 | `supporting_area_id` | ID of that area | Same as `supporting_area` |
 | `supporting_floor` | Display name of the supporting tracker's floor | While a supporting floor resolves |
 | `supporting_floor_id` | ID of that floor | Same as `supporting_floor` |
-| `supporting_agrees` | `area` if the supporting area is the camera's area, `floor` if only the floor matches, otherwise `none` | Only while `home` and a supporting area or floor resolves |
+| `supporting_agrees` | `area` if the supporting area is the camera's area, `floor` if only the floor matches, otherwise `none` | Only while the camera leads and a supporting area or floor resolves |
 
-Area and floor are looked up live from the last seen area, so renaming an area or floor, or moving the area to another floor, shows on the tracker without a reload, also after expiry.
+The `last_*`, `area_id` and `floor_id` attributes always describe the last camera sighting; the supporting tracker never overwrites them. Area and floor are looked up live from the last seen area, so renaming an area or floor, or moving the area to another floor, shows on the tracker without a reload, also after expiry.
 
 The supporting attributes are resolved live too: they update whenever a supporting entity changes state or an area or floor is renamed.
 

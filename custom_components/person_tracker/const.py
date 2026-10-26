@@ -140,7 +140,8 @@ UNKNOWN_SNAPSHOT_RETENTION_DAYS = 7
 UNKNOWN_SNAPSHOT_CLEANUP_HOURS = 24
 
 # Extra state attributes exposed on the tracker entities (ADR 0003). The
-# area is only present while the sighting is current; last_location is kept.
+# area is only present while home (the camera's, or the supporting tracker's
+# while it leads, ADR 0008); last_location is the camera's and is kept.
 ATTR_AREA = "area"
 ATTR_LAST_SEEN = "last_seen"
 ATTR_LAST_LOCATION = "last_location"
@@ -159,3 +160,6 @@ ATTR_SUPPORTING_AREA_ID = "supporting_area_id"
 ATTR_SUPPORTING_FLOOR = "supporting_floor"
 ATTR_SUPPORTING_FLOOR_ID = "supporting_floor_id"
 ATTR_SUPPORTING_AGREES = "supporting_agrees"
+# Which source places the person at home (Issue #30 / ADR 0008): "camera"
+# while the camera sighting leads, else the supporting area entity's ID.
+ATTR_SOURCE = "source"

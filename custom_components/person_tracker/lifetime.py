@@ -14,6 +14,13 @@ Authoritative demotion
 If the person's optional authoritative tracker (e.g. their phone
 ``device_tracker``) reports the person away from home, the camera tracker is
 immediately demoted to ``unknown``.
+
+Leading source
+--------------
+The current camera sighting leads; once it is not current, a supporting
+tracker that resolves to an area leads instead (ADR 0008). A supporting
+floor alone gives no presence. The authoritative tracker reporting the
+person away outranks both: no source leads and the tracker is ``unknown``.
 """
 
 from __future__ import annotations
@@ -21,6 +28,9 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 
 from homeassistant.const import STATE_HOME, STATE_UNKNOWN
+
+SOURCE_CAMERA = "camera"
+SOURCE_SUPPORTING = "supporting"
 
 
 def is_expired(last_seen: datetime | None, ttl: timedelta, now: datetime) -> bool:
@@ -48,3 +58,21 @@ def authoritative_reports_away(state: str | None) -> bool:
     if state is None or state == STATE_UNKNOWN:
         return False
     return state != STATE_HOME
+
+
+def leading_source(
+    *, authoritative_away: bool, camera_current: bool, has_supporting_area: bool
+) -> str | None:
+    """Which source places the person at home, if any.
+
+    ``camera`` while the camera sighting is current, else ``supporting``
+    while the supporting tracker resolves to an area, else None (unknown).
+    None whenever the authoritative tracker reports the person away.
+    """
+    if authoritative_away:
+        return None
+    if camera_current:
+        return SOURCE_CAMERA
+    if has_supporting_area:
+        return SOURCE_SUPPORTING
+    return None

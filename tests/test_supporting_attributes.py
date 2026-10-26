@@ -2,8 +2,8 @@
 
 The supporting area and floor entities are resolved live to HA areas and
 floors (ADR 0008) and reported as attributes, with ``supporting_agrees``
-comparing them to the current camera sighting. At this stage the supporting
-tracker is only observed: it never changes the tracker's state.
+comparing them to the current camera sighting. How the supporting tracker
+changes the tracker's state is covered in ``test_supporting_fallback``.
 """
 
 from __future__ import annotations
@@ -136,10 +136,10 @@ async def test_floor_entity_alone(hass: HomeAssistant, default_ai_task: None) ->
         assert attrs[ATTR_SUPPORTING_AGREES] == "floor"
 
 
-async def test_supporting_changes_republish_without_changing_state(
+async def test_supporting_changes_republish(
     hass: HomeAssistant, default_ai_task: None
 ) -> None:
-    """Supporting entity changes re-publish; the state stays the camera's."""
+    """Supporting entity changes re-publish the supporting attributes."""
     areas = _house(hass)
     hass.states.async_set(AREA_ENTITY, "not_home")
     async with setup_entry(
@@ -149,11 +149,10 @@ async def test_supporting_changes_republish_without_changing_state(
         assert _tracker_state(hass, "Alice") == "unknown"
         assert ATTR_SUPPORTING_AREA not in _tracker_attributes(hass, "Alice")
 
-        # A supporting area alone does not put the person at home (yet).
+        # Without a camera sighting there is nothing to agree with.
         hass.states.async_set(AREA_ENTITY, "Bedroom", {"area_id": areas["Bedroom"].id})
         await hass.async_block_till_done()
         attrs = _tracker_attributes(hass, "Alice")
-        assert _tracker_state(hass, "Alice") == "unknown"
         assert attrs[ATTR_SUPPORTING_AREA] == "Bedroom"
         assert ATTR_SUPPORTING_AGREES not in attrs
 
@@ -193,7 +192,6 @@ async def test_expired_sighting_drops_agreement_only(
         async_fire_time_changed(hass, dt_util.now())
         await hass.async_block_till_done()
         attrs = _tracker_attributes(hass, "Alice")
-        assert _tracker_state(hass, "Alice") == "unknown"
         assert attrs[ATTR_SUPPORTING_AREA] == "Garden"
         assert ATTR_SUPPORTING_AGREES not in attrs
 
