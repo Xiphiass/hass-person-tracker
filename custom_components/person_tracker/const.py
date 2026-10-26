@@ -23,6 +23,10 @@ CONF_PERSON_NAME = "name"
 CONF_TTL = "ttl"
 CONF_AUTHORITATIVE_TRACKER = "authoritative_tracker"
 CONF_DESCRIPTION = "description"
+# Supporting tracker (ADR 0008): entities whose states name an HA area and an
+# HA floor, both optional.
+CONF_SUPPORTING_AREA_ENTITY = "supporting_area_entity"
+CONF_SUPPORTING_FLOOR_ENTITY = "supporting_floor_entity"
 
 # Per-camera config keys.
 CONF_CAMERA = "camera"
@@ -58,6 +62,7 @@ REFERENCE_IMAGE_EXTENSIONS = frozenset(
 ERR_UNIQUE_PERSON = "unique_person"
 ERR_INVALID_PERSON_NAME = "invalid_person_name"
 ERR_INVALID_AUTHORITATIVE_TRACKER = "invalid_authoritative_tracker"
+ERR_INVALID_SUPPORTING_ENTITY = "invalid_supporting_entity"
 ERR_DUPLICATE_CAMERA = "duplicate_camera"
 ERR_INVALID_CAMERA = "invalid_camera"
 ERR_CAMERA_WITHOUT_AREA = "camera_without_area"
@@ -146,3 +151,11 @@ ATTR_LAST_CAMERA = "last_camera"
 ATTR_FLOOR = "floor"
 ATTR_LAST_FLOOR = "last_floor"
 ATTR_FLOOR_ID = "floor_id"
+# The Supporting tracker's location (Issue #29 / ADR 0008), resolved live
+# from the supporting entities: names and IDs only while resolvable, and
+# whether it agrees with the current camera sighting (area / floor / none).
+ATTR_SUPPORTING_AREA = "supporting_area"
+ATTR_SUPPORTING_AREA_ID = "supporting_area_id"
+ATTR_SUPPORTING_FLOOR = "supporting_floor"
+ATTR_SUPPORTING_FLOOR_ID = "supporting_floor_id"
+ATTR_SUPPORTING_AGREES = "supporting_agrees"

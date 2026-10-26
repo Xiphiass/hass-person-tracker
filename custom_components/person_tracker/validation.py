@@ -18,6 +18,7 @@ from .const import (
     ERR_INVALID_AUTHORITATIVE_TRACKER,
     ERR_INVALID_CAMERA,
     ERR_INVALID_PERSON_NAME,
+    ERR_INVALID_SUPPORTING_ENTITY,
     ERR_INVALID_TRIGGER,
     ERR_NO_TRIGGERS,
     ERR_UNIQUE_PERSON,
@@ -56,6 +57,13 @@ def authoritative_tracker_error(hass: HomeAssistant, entity_id: str) -> str | No
     """Check an authoritative tracker is a device_tracker entity."""
     if _domain_of(hass, entity_id) != "device_tracker":
         return ERR_INVALID_AUTHORITATIVE_TRACKER
+    return None
+
+
+def supporting_entity_error(hass: HomeAssistant, entity_id: str) -> str | None:
+    """Check a supporting area or floor entity exists (any domain fits)."""
+    if hass.states.get(entity_id) is None:
+        return ERR_INVALID_SUPPORTING_ENTITY
     return None
 
 

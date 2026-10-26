@@ -560,6 +560,72 @@ async def test_add_person_invalid_authoritative_tracker(
     }
 
 
+async def test_add_person_supporting_tracker(
+    hass: HomeAssistant, default_ai_task: None, cameras: None
+) -> None:
+    """The supporting area and floor entities are stored on the person."""
+    hass.states.async_set("sensor.bob_area", "Kitchen")
+    hass.states.async_set("sensor.bob_floor", "Ground Floor")
+    async with setup_entry(hass, people=[]) as entry:
+        result = await _init_person_flow(hass, entry)
+        result = await _configure_person(
+            hass,
+            result,
+            {
+                const.CONF_PERSON_NAME: "Bob",
+                const.CONF_SUPPORTING_AREA_ENTITY: "sensor.bob_area",
+                const.CONF_SUPPORTING_FLOOR_ENTITY: "sensor.bob_floor",
+            },
+        )
+        assert result["type"] is FlowResultType.CREATE_ENTRY
+        assert result["data"] == {
+            const.CONF_PERSON_NAME: "Bob",
+            const.CONF_TTL: 30,
+            const.CONF_SUPPORTING_AREA_ENTITY: "sensor.bob_area",
+            const.CONF_SUPPORTING_FLOOR_ENTITY: "sensor.bob_floor",
+        }
+        await hass.async_block_till_done()
+        (bob,) = entry.runtime_data.people.values()
+        assert bob.supporting_area_entity == "sensor.bob_area"
+        assert bob.supporting_floor_entity == "sensor.bob_floor"
+
+
+@pytest.mark.parametrize(
+    "key",
+    [const.CONF_SUPPORTING_AREA_ENTITY, const.CONF_SUPPORTING_FLOOR_ENTITY],
+)
+async def test_add_person_invalid_supporting_entity(
+    hass: HomeAssistant, default_ai_task: None, cameras: None, key: str
+) -> None:
+    """A supporting entity must exist."""
+    entry = create_entry(hass)
+    result = await _init_person_flow(hass, entry)
+    result = await _configure_person(
+        hass, result, {const.CONF_PERSON_NAME: "Bob", key: "sensor.gone"}
+    )
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"] == {key: const.ERR_INVALID_SUPPORTING_ENTITY}
+
+
+async def test_reconfigure_person_supporting_tracker(
+    hass: HomeAssistant, default_ai_task: None, cameras: None
+) -> None:
+    """Reconfigure shows the stored supporting entity and can clear it."""
+    hass.states.async_set("sensor.alice_area", "Kitchen")
+    entry = create_entry(
+        hass, people=[person("Alice", supporting_area_entity="sensor.alice_area")]
+    )
+    (alice_id,) = entry.subentries
+    result = await entry.start_subentry_reconfigure_flow(hass, alice_id)
+    keys = {key.schema: key for key in result["data_schema"].schema}
+    assert keys[const.CONF_SUPPORTING_AREA_ENTITY].description == {
+        "suggested_value": "sensor.alice_area"
+    }
+    result = await _configure_person(hass, result, {const.CONF_PERSON_NAME: "Alice"})
+    assert result["reason"] == "reconfigure_successful"
+    assert const.CONF_SUPPORTING_AREA_ENTITY not in entry.subentries[alice_id].data
+
+
 async def test_reconfigure_person_rename_keeps_entity(
     hass: HomeAssistant, default_ai_task: None, cameras: None
 ) -> None:

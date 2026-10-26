@@ -44,6 +44,8 @@ from .const import (
     CONF_PERSON_NAME,
     CONF_RECHECK,
     CONF_REMOVE_CAMERAS,
+    CONF_SUPPORTING_AREA_ENTITY,
+    CONF_SUPPORTING_FLOOR_ENTITY,
     CONF_TTL,
     CONF_TRIGGERS,
     DEFAULT_COOLDOWN_SECONDS,
@@ -64,6 +66,7 @@ from .validation import (
     authoritative_tracker_error,
     new_camera_error,
     person_name_error,
+    supporting_entity_error,
     triggers_error,
 )
 
@@ -78,6 +81,9 @@ _PERSON_SCHEMA = probatio.Schema(
         probatio.Optional(CONF_AUTHORITATIVE_TRACKER): EntitySelector(
             EntitySelectorConfig(domain="device_tracker")
         ),
+        # Any integration fits (ADR 0008), so no domain filter.
+        probatio.Optional(CONF_SUPPORTING_AREA_ENTITY): EntitySelector(),
+        probatio.Optional(CONF_SUPPORTING_FLOOR_ENTITY): EntitySelector(),
         probatio.Optional(CONF_DESCRIPTION): TextSelector(
             TextSelectorConfig(multiline=True)
         ),
@@ -387,6 +393,11 @@ class PersonSubentryFlow(ConfigSubentryFlow):
             error := authoritative_tracker_error(self.hass, authoritative)
         ):
             errors[CONF_AUTHORITATIVE_TRACKER] = error
+        for key in (CONF_SUPPORTING_AREA_ENTITY, CONF_SUPPORTING_FLOOR_ENTITY):
+            if (entity_id := user_input.get(key)) and (
+                error := supporting_entity_error(self.hass, entity_id)
+            ):
+                errors[key] = error
         if errors:
             return {}, errors
         data: dict[str, Any] = {
@@ -395,6 +406,9 @@ class PersonSubentryFlow(ConfigSubentryFlow):
         }
         if authoritative:
             data[CONF_AUTHORITATIVE_TRACKER] = authoritative
+        for key in (CONF_SUPPORTING_AREA_ENTITY, CONF_SUPPORTING_FLOOR_ENTITY):
+            if entity_id := user_input.get(key):
+                data[key] = entity_id
         if description := (user_input.get(CONF_DESCRIPTION) or "").strip():
             data[CONF_DESCRIPTION] = description
         return data, {}
