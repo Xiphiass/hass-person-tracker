@@ -41,9 +41,16 @@ The global threshold (0-1) below which an Identification is not trusted: the Per
 **Authoritative tracker**:
 An optional external device_tracker per Person (e.g. their phone) that outranks the camera tracker: when it reports the Person away, the camera tracker is immediately demoted to unknown.
 
+**Supporting tracker**:
+An optional, lower-priority, room-level location source per Person (e.g. a BLE tracker), configured as an area entity and/or a floor entity. The camera sighting outranks it, and the Authoritative tracker can demote it. It leads once the camera sighting has expired, or after a move the cameras did not see, and it can raise an Identification's confidence (ADR 0008, ADR 0009). One per Person.
+_Avoid_: secondary tracker, BLE tracker (BLE is one example)
+
 **Re-check**:
 An Identification run shortly before a Person's sighting expires, on the Person's last camera and asking about that Person only. A confirmation refreshes the sighting; anything else lets it expire (ADR 0007).
 _Avoid_: poll, refresh
+
+**Move check**:
+An Identification run on the cameras of the area the Supporting tracker has just moved the Person to, asking about that Person only, so a camera can confirm the move. A confirmation is a normal sighting; a miss changes nothing (ADR 0008).
 
 **Unknown snapshot**:
 A saved Snapshot in which no known Person was identified. Retained on disk with camera and timestamp metadata; the raw material for future self-learning (out of scope in v1).
