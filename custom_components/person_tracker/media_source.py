@@ -2,7 +2,9 @@
 
 The AI Task integration only accepts attachments it can resolve through
 media_source to a local file, so the per-person reference-image folders are
-served as ``media-source://person_tracker/people/<person>/<file>``, and the
+served as ``media-source://person_tracker/people/<person>/<file>``, their
+downscaled copies as
+``media-source://person_tracker/reference_cache/<person>/<file>``, and the
 camera frame of a running detection as
 ``media-source://person_tracker/frames/<file>``.
 """
@@ -13,7 +15,7 @@ from homeassistant.components.media_source import local_source
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.singleton import singleton
 
-from .const import DOMAIN, FRAMES_DIR, PEOPLE_DIR
+from .const import DOMAIN, FRAMES_DIR, PEOPLE_DIR, REFERENCE_CACHE_DIR
 
 DATA_MEDIA_SOURCE = f"{DOMAIN}_media_source"
 
@@ -27,6 +29,7 @@ async def async_get_media_source(hass: HomeAssistant) -> local_source.LocalSourc
         "Person Tracker reference images",
         {
             PEOPLE_DIR: hass.config.path(DOMAIN, PEOPLE_DIR),
+            REFERENCE_CACHE_DIR: hass.config.path(DOMAIN, REFERENCE_CACHE_DIR),
             FRAMES_DIR: hass.config.path(DOMAIN, FRAMES_DIR),
         },
         f"/{DOMAIN}",

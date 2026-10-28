@@ -74,6 +74,12 @@ PEOPLE_DIR = "people"
 REFERENCE_IMAGE_EXTENSIONS = frozenset(
     {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif"}
 )
+# Vision models bill an image by its pixel size, so a reference image whose
+# longer edge exceeds this is sent as a downscaled JPEG copy (Issue #43),
+# cached per person under <config>/person_tracker/reference_cache/ and
+# rebuilt when the original changes. The originals are never touched.
+REFERENCE_IMAGE_MAX_SIZE = 512
+REFERENCE_CACHE_DIR = "reference_cache"
 
 # Config entry error keys (translations in translations/en.json).
 ERR_UNIQUE_PERSON = "unique_person"

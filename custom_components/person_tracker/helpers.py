@@ -12,6 +12,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from PIL import Image as PILImage
+from PIL import ImageOps as PILImageOps
 from homeassistant.components import ai_task as ai_task_component
 from homeassistant.const import ATTR_RESTORED
 from homeassistant.core import HomeAssistant, State
@@ -26,7 +27,9 @@ from .const import (
     DOMAIN,
     FRAMES_DIR,
     PEOPLE_DIR,
+    REFERENCE_CACHE_DIR,
     REFERENCE_IMAGE_EXTENSIONS,
+    REFERENCE_IMAGE_MAX_SIZE,
     SUPPORTING_SETTLE_SECONDS,
     THUMBNAIL_MIN_BOX_AREA,
     THUMBNAIL_PADDING,
@@ -216,6 +219,67 @@ def discover_reference_images(hass: HomeAssistant, person_name: str) -> list[Pat
         for path in folder.iterdir()
         if path.is_file() and path.suffix.lower() in REFERENCE_IMAGE_EXTENSIONS
     )
+
+
+def get_reference_cache_dir(hass: HomeAssistant, person_name: str) -> Path:
+    """Return the folder of *person_name*'s downscaled reference images."""
+    return Path(hass.config.path(DOMAIN, REFERENCE_CACHE_DIR, person_name))
+
+
+def prepare_reference_images(
+    hass: HomeAssistant, person_name: str, images: list[Path]
+) -> list[Path]:
+    """The files to send to the AI for *person_name*'s reference *images*.
+
+    An image larger than ``REFERENCE_IMAGE_MAX_SIZE`` is replaced by a
+    downscaled JPEG copy in the person's cache folder (Issue #43), made once
+    per version of the original; every other image, and one that can't be
+    decoded or cached, is kept as it is. Copies of originals that changed or
+    went away are deleted. Does blocking I/O; run it in the executor.
+    """
+    folder = get_reference_cache_dir(hass, person_name)
+    prepared = [_downscaled_reference(folder, path) for path in images]
+    if folder.is_dir():
+        keep = set(prepared)
+        for path in folder.iterdir():
+            if path not in keep:
+                try:
+                    path.unlink(missing_ok=True)
+                except OSError as err:
+                    _LOGGER.warning("Could not delete cached copy %s: %s", path, err)
+    return prepared
+
+
+def _downscaled_reference(folder: Path, path: Path) -> Path:
+    """The cached downscaled copy of reference image *path*, or *path*."""
+    try:
+        mtime = path.stat().st_mtime_ns
+        cached = folder / (
+            f"{path.stem}-{path.suffix.lstrip('.')}-{mtime}"
+            f"-{REFERENCE_IMAGE_MAX_SIZE}.jpg"
+        )
+        if cached.is_file():
+            return cached
+        with PILImage.open(path) as image:
+            if max(image.size) <= REFERENCE_IMAGE_MAX_SIZE:
+                return path
+            # Re-encoding drops the EXIF orientation, so apply it first.
+            scaled = PILImageOps.exif_transpose(image)
+            scaled.thumbnail(
+                (REFERENCE_IMAGE_MAX_SIZE, REFERENCE_IMAGE_MAX_SIZE),
+                PILImage.Resampling.LANCZOS,
+            )
+            if scaled.mode not in ("RGB", "L"):
+                scaled = scaled.convert("RGB")
+            folder.mkdir(parents=True, exist_ok=True)
+            # Concurrent runs may prepare the same image; publish atomically.
+            partial_path = folder / f".{cached.name}.{uuid4().hex}.tmp"
+            scaled.save(partial_path, format="JPEG", quality=90)
+            partial_path.replace(cached)
+    except (OSError, ValueError) as err:
+        _LOGGER.debug("Sending reference image %s as it is: %s", path, err)
+        return path
+    return cached
 
 
 def get_unknown_snapshots_dir(hass: HomeAssistant) -> Path:
