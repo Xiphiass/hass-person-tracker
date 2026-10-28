@@ -5,7 +5,8 @@ the matching camera's snapshot is saved and sent to the configured AI task
 entity (the very frame that is later cropped into thumbnails),
 together with every person's reference images, and the AI identifies the
 household members in the scene (Issue #3). Reference images are re-read from
-disk on every run, so added or replaced files apply without a reload. Each
+disk on every run, so added or replaced files apply without a reload, and
+large ones are sent as downscaled copies (Issue #43). Each
 identified person's location, area, last_seen and last_camera are updated,
 and their tracker entity is nudged through a per-person dispatcher signal.
 
@@ -72,7 +73,6 @@ from .const import (
     AI_TASK_RECHECK_INSTRUCTIONS,
     DOMAIN,
     FRAMES_DIR,
-    PEOPLE_DIR,
     RECHECK_LEAD_SECONDS,
     SIGNAL_TRACKER_UPDATE_PERSON,
     MOVE_CHECK_GROUP_SECONDS,
@@ -91,6 +91,7 @@ from .helpers import (
     resolve_supporting_area,
     purge_unknown_snapshots,
     is_authoritative_away,
+    prepare_reference_images,
     save_frame,
     save_person_thumbnail,
     save_unknown_snapshot,
@@ -207,9 +208,14 @@ def unknown_person_count(data: Any) -> int | None:
     return count
 
 
-def _reference_image_id(person: Person, path: Path) -> str:
-    """The media source ID of *person*'s reference image *path*."""
-    return f"media-source://{DOMAIN}/{PEOPLE_DIR}/{person.name}/{path.name}"
+def _reference_image_id(hass: HomeAssistant, path: Path) -> str:
+    """The media source ID of reference image *path*.
+
+    *path* is an original under the people folder or its downscaled copy
+    under the reference cache; both are served below the same root.
+    """
+    relative = path.relative_to(hass.config.path(DOMAIN)).as_posix()
+    return f"media-source://{DOMAIN}/{relative}"
 
 
 def _frame_id(path: Path) -> str:
@@ -458,6 +464,15 @@ class DetectionCoordinator:
         except HomeAssistantError as err:
             _LOGGER.error("Snapshot failed for %s: %s", camera.entity_id, err)
             return None
+        references = await self._hass.async_add_executor_job(
+            lambda: [
+                path
+                for person in people
+                for path in prepare_reference_images(
+                    self._hass, person.name, person.reference_images
+                )
+            ]
+        )
         # The AI gets exactly this frame, not a fresh camera fetch: its bbox
         # must describe the frame the thumbnail is cropped from.
         try:
@@ -473,9 +488,8 @@ class DetectionCoordinator:
             return None
         attachments = [{"media_content_id": _frame_id(frame)}]
         attachments.extend(
-            {"media_content_id": _reference_image_id(person, path)}
-            for person in people
-            for path in person.reference_images
+            {"media_content_id": _reference_image_id(self._hass, path)}
+            for path in references
         )
         result: GenDataTaskResult
         try:
