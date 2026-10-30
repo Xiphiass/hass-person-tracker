@@ -6,7 +6,7 @@ from homeassistant.const import Platform
 
 DOMAIN = "person_tracker"
 
-PLATFORMS = [Platform.DEVICE_TRACKER, Platform.IMAGE]
+PLATFORMS = [Platform.DEVICE_TRACKER, Platform.IMAGE, Platform.SENSOR]
 
 # Config entry data keys (global settings).
 CONF_CAMERAS = "cameras"
@@ -86,6 +86,7 @@ ERR_UNIQUE_PERSON = "unique_person"
 ERR_INVALID_PERSON_NAME = "invalid_person_name"
 ERR_INVALID_AUTHORITATIVE_TRACKER = "invalid_authoritative_tracker"
 ERR_INVALID_SUPPORTING_ENTITY = "invalid_supporting_entity"
+ERR_OWN_SUPPORTING_ENTITY = "own_supporting_entity"
 ERR_DUPLICATE_CAMERA = "duplicate_camera"
 ERR_INVALID_CAMERA = "invalid_camera"
 ERR_CAMERA_WITHOUT_AREA = "camera_without_area"

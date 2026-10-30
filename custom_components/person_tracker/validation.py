@@ -10,8 +10,10 @@ import re
 from collections.abc import Iterable
 
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry as er
 
 from .const import (
+    DOMAIN,
     ERR_CAMERA_WITHOUT_AREA,
     ERR_DUPLICATE_CAMERA,
     ERR_INVALID_AI_TASK_ENTITY,
@@ -21,6 +23,7 @@ from .const import (
     ERR_INVALID_SUPPORTING_ENTITY,
     ERR_INVALID_TRIGGER,
     ERR_NO_TRIGGERS,
+    ERR_OWN_SUPPORTING_ENTITY,
     ERR_UNIQUE_PERSON,
 )
 from .helpers import get_entity_area_id
@@ -61,9 +64,17 @@ def authoritative_tracker_error(hass: HomeAssistant, entity_id: str) -> str | No
 
 
 def supporting_entity_error(hass: HomeAssistant, entity_id: str) -> str | None:
-    """Check a supporting area or floor entity exists (any domain fits)."""
+    """Check a supporting area or floor entity exists (any domain fits).
+
+    Our own entities are refused: the area and floor sensors mirror the
+    tracker, so as its supporting tracker they would feed it its own output.
+    """
     if hass.states.get(entity_id) is None:
         return ERR_INVALID_SUPPORTING_ENTITY
+    if (
+        entry := er.async_get(hass).async_get(entity_id)
+    ) is not None and entry.platform == DOMAIN:
+        return ERR_OWN_SUPPORTING_ENTITY
     return None
 
 

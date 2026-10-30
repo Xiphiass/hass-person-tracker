@@ -141,7 +141,8 @@
         "invalid_person_name": "Invalid person name. Names must not be empty, may not contain whitespace or path characters, and are used as folder names.",
         "unique_person": "This person is already configured.",
         "invalid_authoritative_tracker": "The authoritative tracker must be an existing device_tracker entity.",
-        "invalid_supporting_entity": "The supporting tracker entity must be an existing entity."
+        "invalid_supporting_entity": "The supporting tracker entity must be an existing entity.",
+        "own_supporting_entity": "The supporting tracker cannot be an entity of this integration."
       },
       "abort": {
         "reconfigure_successful": "Re-configuration was successful."
@@ -152,6 +153,14 @@
     "image": {
       "last_detection": {
         "name": "Last detection"
+      }
+    },
+    "sensor": {
+      "area": {
+        "name": "Current area"
+      },
+      "floor": {
+        "name": "Current floor"
       }
     }
   }

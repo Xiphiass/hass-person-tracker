@@ -81,6 +81,17 @@ The `last_*`, `area_id` and `floor_id` attributes always describe the last camer
 
 The supporting attributes are resolved live too: they update whenever a supporting entity changes state or an area or floor is renamed.
 
+## Area and floor sensors
+
+Attributes do not show in Home Assistant's history graph, so each person also gets two sensors on their device that keep the location's history:
+
+| Sensor | State |
+| --- | --- |
+| `sensor.<person>_current_area` | The tracker's `area` attribute, or `unknown` when it has none |
+| `sensor.<person>_current_floor` | The tracker's `floor` attribute, or `unknown` when it has none |
+
+They mirror the tracker, so they follow the same rules: the supporting tracker's location while it leads, `unknown` after expiry or authoritative demotion, and live area and floor renames. Because they mirror the tracker, they cannot be picked as a person's supporting area or floor entity.
+
 ## Requirements
 
 - Home Assistant Core 2025.8 or later (for AI Task integration support). The integration's own icon shows from Home Assistant 2026.3 on, which loads brand images shipped with custom integrations.

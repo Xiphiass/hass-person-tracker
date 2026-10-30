@@ -624,6 +624,26 @@ async def test_add_person_invalid_supporting_entity(
     assert result["errors"] == {key: const.ERR_INVALID_SUPPORTING_ENTITY}
 
 
+async def test_add_person_own_sensor_as_supporting_entity(
+    hass: HomeAssistant, default_ai_task: None, cameras: None
+) -> None:
+    """Our own area sensor would feed the tracker its own output."""
+    async with setup_entry(hass) as entry:
+        result = await _init_person_flow(hass, entry)
+        result = await _configure_person(
+            hass,
+            result,
+            {
+                const.CONF_PERSON_NAME: "Bob",
+                const.CONF_SUPPORTING_AREA_ENTITY: "sensor.alice_current_area",
+            },
+        )
+        assert result["type"] is FlowResultType.FORM
+        assert result["errors"] == {
+            const.CONF_SUPPORTING_AREA_ENTITY: const.ERR_OWN_SUPPORTING_ENTITY
+        }
+
+
 async def test_reconfigure_person_supporting_tracker(
     hass: HomeAssistant, default_ai_task: None, cameras: None
 ) -> None:
