@@ -141,7 +141,8 @@
         "invalid_person_name": "Ungültiger Name. Namen dürfen nicht leer sein, keine Leerzeichen oder Pfadzeichen enthalten und werden als Ordnernamen verwendet.",
         "unique_person": "Diese Person ist bereits konfiguriert.",
         "invalid_authoritative_tracker": "Der maßgebliche Tracker muss eine vorhandene device_tracker-Entität sein.",
-        "invalid_supporting_entity": "Die unterstützende Tracker-Entität muss eine vorhandene Entität sein."
+        "invalid_supporting_entity": "Die unterstützende Tracker-Entität muss eine vorhandene Entität sein.",
+        "own_supporting_entity": "Der unterstützende Tracker darf keine Entität dieser Integration sein."
       },
       "abort": {
         "reconfigure_successful": "Die Neukonfiguration war erfolgreich."
@@ -152,6 +153,14 @@
     "image": {
       "last_detection": {
         "name": "Letzte Erkennung"
+      }
+    },
+    "sensor": {
+      "area": {
+        "name": "Aktueller Bereich"
+      },
+      "floor": {
+        "name": "Aktuelle Etage"
       }
     }
   }
