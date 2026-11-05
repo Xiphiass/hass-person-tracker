@@ -11,6 +11,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 
 from .const import (
+    DEFAULT_AI_METHOD,
     DEFAULT_COOLDOWN_SECONDS,
     DEFAULT_MIN_CONFIDENCE,
     DEFAULT_MOVE_CHECK,
@@ -111,6 +112,8 @@ class PersonTrackerData:
     # Ask the cameras of the area a settled supporting move leads to whether
     # the person is there (Issue #34 / ADR 0008).
     move_check: bool = DEFAULT_MOVE_CHECK
+    # The AI Task action that identifies Persons (ADR 0010).
+    ai_method: str = DEFAULT_AI_METHOD
     # The detection loop; set during entry setup.
     coordinator: DetectionCoordinator | None = None
 

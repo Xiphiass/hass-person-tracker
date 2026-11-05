@@ -31,6 +31,13 @@ supporting tracker agrees with (same area, else same floor) is boosted
 before the minimum confidence comparison. The supporting tracker never
 reaches the AI prompt, so the camera stays an independent check.
 
+Identification method (ADR 0010): by default the AI is asked through
+``ai_task.generate_data`` for structured output; with the evaluate method,
+``ai_task.evaluate`` asks the decision model one yes/no question per person
+(see ``evaluation``), and its answers are translated into the same response
+shape, so everything after the AI call is shared. Evaluate gives no boxes:
+last-seen thumbnails then keep the full frame.
+
 Failure policy (Issue #5): a failed snapshot or a failed AI call logs an
 error and aborts the run — no tracker state changes, no retry is scheduled,
 and the next trigger edge runs a fresh detection.
@@ -49,11 +56,8 @@ from typing import Any, TypedDict
 
 import probatio
 import probatio.error
-from homeassistant.components.ai_task.task import (
-    GenDataTaskResult,
-    async_generate_data,
-)
 from homeassistant.components import ffmpeg
+from homeassistant.components.ai_task.task import async_generate_data
 from homeassistant.components.camera import (
     Image,
     async_get_image,
@@ -73,6 +77,7 @@ from homeassistant.helpers.event import (
 from homeassistant.util import dt as dt_util
 
 from .const import (
+    AI_METHOD_EVALUATE,
     AI_TASK_INSTRUCTIONS,
     AI_TASK_MOVE_CHECK_INSTRUCTIONS,
     AI_TASK_NAME,
@@ -88,6 +93,7 @@ from .const import (
     UNKNOWN_SNAPSHOT_CLEANUP_HOURS,
     UNKNOWN_SNAPSHOT_RETENTION_DAYS,
 )
+from .evaluation import async_identify_by_evaluation, reference_ranges
 from .helpers import (
     delete_frame,
     discover_reference_images,
@@ -254,14 +260,9 @@ def _build_instructions(people: list[Person], *, preamble: str | None = None) ->
     task = AI_TASK_INSTRUCTIONS
     if preamble:
         task = f"{preamble} {task}"
-    references: list[str] = []
-    position = 2
-    for person in people:
-        if count := len(person.reference_images):
-            last = position + count - 1
-            images = f"image {position}" if count == 1 else f"images {position}-{last}"
-            references.append(f"{images}: {person.name}")
-            position = last + 1
+    references = [
+        f"{images}: {name}" for name, images in reference_ranges(people).items()
+    ]
     if not references:
         return f"Household members to look for: {names}.{descriptions} {task}"
     return (
@@ -501,35 +502,47 @@ class DetectionCoordinator:
             {"media_content_id": _reference_image_id(self._hass, path)}
             for path in references
         )
-        result: GenDataTaskResult
+        data: Any = None
         try:
-            result = await async_generate_data(
-                self._hass,
-                task_name=AI_TASK_NAME,
-                entity_id=self._data.ai_task_entity_id,
-                instructions=_build_instructions(people, preamble=preamble),
-                structure=AI_RESULT_STRUCTURE,
-                attachments=attachments,
-            )
+            if self._data.ai_method == AI_METHOD_EVALUATE:
+                # Only a full detection run asks about anyone else: re-checks
+                # and move checks never save an unknown snapshot.
+                data = await async_identify_by_evaluation(
+                    self._hass,
+                    self._data.ai_task_entity_id,
+                    people,
+                    attachments,
+                    preamble=preamble,
+                    ask_unknown=preamble is None,
+                )
+            else:
+                result = await async_generate_data(
+                    self._hass,
+                    task_name=AI_TASK_NAME,
+                    entity_id=self._data.ai_task_entity_id,
+                    instructions=_build_instructions(people, preamble=preamble),
+                    structure=AI_RESULT_STRUCTURE,
+                    attachments=attachments,
+                )
+                data = result.data
+            hits = validate_ai_response(data)
         # Provider-side failures (down, timeout, malformed structured
         # output) surface as HomeAssistantError or a probatio validation
         # error, depending on the AI Task integration.
         except (HomeAssistantError, probatio.error.Error) as err:
             _LOGGER.error("Identification failed for %s: %s", camera.entity_id, err)
             return None
-        finally:
-            await self._hass.async_add_executor_job(delete_frame, frame)
-        try:
-            hits = validate_ai_response(result.data)
         except ValueError as err:
             _LOGGER.error(
                 "Malformed AI response for %s: %s; response: %r",
                 camera.entity_id,
                 err,
-                result.data,
+                data,
             )
             return None
-        return image, result.data, hits
+        finally:
+            await self._hass.async_add_executor_job(delete_frame, frame)
+        return image, data, hits
 
     async def _async_apply_hits(
         self,

@@ -34,9 +34,13 @@
       },
       "ai_task": {
         "title": "KI-Aufgabe",
-        "description": "Wähle die KI-Aufgaben-Entität, mit der Personen auf Kamera-Schnappschüssen erkannt werden. Sie muss Bildanhänge unterstützen.",
+        "description": "Wähle die KI-Aufgaben-Entität, mit der Personen auf Kamera-Schnappschüssen erkannt werden, und wie sie gefragt wird. Sie muss Bildanhänge unterstützen.",
         "data": {
-          "ai_task_entity": "KI-Aufgaben-Entität"
+          "ai_task_entity": "KI-Aufgaben-Entität",
+          "ai_method": "Erkennungsmethode"
+        },
+        "data_description": {
+          "ai_method": "Daten generieren fragt die KI nach strukturierten Daten mit Konfidenzen und Rahmen um jede Person (zugeschnittene Zuletzt-gesehen-Bilder). Bewerten (Home Assistant 2026.11+) stellt deinem Entscheidungsmodell pro Person eine Ja/Nein-Frage und nutzt dessen Wahrscheinlichkeiten als Konfidenz; es liefert keine Rahmen, daher zeigen Zuletzt-gesehen-Bilder das ganze Bild. Die Entität muss Bewerten unterstützen."
         }
       },
       "detection": {
@@ -61,7 +65,7 @@
           "camera_add": "Kamera hinzufügen",
           "camera_edit": "Auslöser oder Bildquelle einer Kamera ändern",
           "camera_remove": "Kameras entfernen",
-          "ai_task": "KI-Aufgaben-Entität ändern",
+          "ai_task": "KI-Aufgaben-Entität oder -Methode ändern",
           "detection": "Erkennungseinstellungen ändern"
         }
       },
@@ -98,7 +102,9 @@
       "no_cameras": "Mindestens eine Kamera muss bestehen bleiben.",
       "no_triggers": "Diese Kamera braucht mindestens einen auslösenden Binärsensor.",
       "invalid_trigger": "Ein oder mehrere Auslöser sind keine binary_sensor-Entitäten.",
-      "invalid_ai_task_entity": "Die KI-Aufgaben-Entität muss eine vorhandene KI-Aufgaben-Entität sein."
+      "invalid_ai_task_entity": "Die KI-Aufgaben-Entität muss eine vorhandene KI-Aufgaben-Entität sein.",
+      "evaluate_unavailable": "Die Methode Bewerten benötigt Home Assistant 2026.11 oder neuer.",
+      "evaluate_not_supported": "Diese KI-Aufgaben-Entität unterstützt Bewerten nicht; wähle eine andere Entität oder die Methode Daten generieren."
     },
     "abort": {
       "single_instance_allowed": "Nur eine einzige Konfiguration ist zulässig.",
@@ -181,6 +187,12 @@
       "options": {
         "camera": "Kamera-Schnappschuss",
         "stream": "Videostream (volle Auflösung)"
+      }
+    },
+    "ai_method": {
+      "options": {
+        "generate_data": "Daten generieren (strukturierte Ausgabe)",
+        "evaluate": "Bewerten (Entscheidungsmodell)"
       }
     }
   }

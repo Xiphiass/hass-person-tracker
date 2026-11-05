@@ -37,6 +37,8 @@ from .const import (
     ABORT_NO_AI_TASK_ENTITY,
     ABORT_SINGLE_INSTANCE,
     CONF_ADD_CAMERA,
+    AI_METHODS,
+    CONF_AI_METHOD,
     CONF_AI_TASK_ENTITY,
     CONF_AUTHORITATIVE_TRACKER,
     CONF_CAMERA,
@@ -53,6 +55,7 @@ from .const import (
     CONF_SNAPSHOT_SOURCE,
     CONF_TTL,
     CONF_TRIGGERS,
+    DEFAULT_AI_METHOD,
     DEFAULT_COOLDOWN_SECONDS,
     DEFAULT_MIN_CONFIDENCE,
     DEFAULT_MOVE_CHECK,
@@ -67,6 +70,7 @@ from .const import (
     SNAPSHOT_SOURCES,
     SUBENTRY_PERSON,
 )
+from .evaluation import evaluate_available
 from .helpers import get_default_ai_task_entity_id, get_person_images_dir
 from .models import person_slug
 from .validation import (
@@ -135,6 +139,19 @@ _AI_TASK_SCHEMA = probatio.Schema(
         )
     }
 )
+# The identification method (ADR 0010) is only offered where HA has
+# ai_task.evaluate (2026.11+); elsewhere generate_data is the only choice.
+_AI_TASK_METHOD_SCHEMA = _AI_TASK_SCHEMA.extend(
+    {
+        probatio.Required(CONF_AI_METHOD): SelectSelector(
+            SelectSelectorConfig(
+                options=AI_METHODS,
+                mode=SelectSelectorMode.LIST,
+                translation_key=CONF_AI_METHOD,
+            )
+        )
+    }
+)
 _DETECTION_SCHEMA = probatio.Schema(
     {
         probatio.Required(CONF_COOLDOWN): NumberSelector(
@@ -176,6 +193,7 @@ class PersonTrackerConfigFlow(ConfigFlow, domain=DOMAIN):
         super().__init__()
         self._cameras: list[dict[str, Any]] = []
         self._ai_task_entity: str | None = None
+        self._ai_method: str = DEFAULT_AI_METHOD
         self._edit_camera: str | None = None
 
     @classmethod
@@ -263,26 +281,32 @@ class PersonTrackerConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_ai_task(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Select the AI task entity."""
+        """Select the AI task entity and the identification method."""
         errors: dict[str, str] = {}
         if user_input is not None:
             ai_task_entity = user_input[CONF_AI_TASK_ENTITY]
-            if error := ai_task_error(self.hass, ai_task_entity):
+            ai_method = user_input.get(CONF_AI_METHOD, DEFAULT_AI_METHOD)
+            if error := ai_task_error(self.hass, ai_task_entity, ai_method):
                 errors[CONF_AI_TASK_ENTITY] = error
             else:
                 self._ai_task_entity = ai_task_entity
+                self._ai_method = ai_method
+                settings = {
+                    CONF_AI_TASK_ENTITY: ai_task_entity,
+                    CONF_AI_METHOD: ai_method,
+                }
                 if self._reconfiguring:
-                    return self._save(**{CONF_AI_TASK_ENTITY: ai_task_entity})
+                    return self._save(**settings)
                 return await self.async_step_detection()
         elif self._reconfiguring:
             user_input = dict(self._get_reconfigure_entry().data)
         else:
             user_input = {CONF_AI_TASK_ENTITY: get_default_ai_task_entity_id(self.hass)}
+        user_input.setdefault(CONF_AI_METHOD, DEFAULT_AI_METHOD)
+        schema = _AI_TASK_METHOD_SCHEMA if evaluate_available() else _AI_TASK_SCHEMA
         return self.async_show_form(
             step_id="ai_task",
-            data_schema=self.add_suggested_values_to_schema(
-                _AI_TASK_SCHEMA, user_input
-            ),
+            data_schema=self.add_suggested_values_to_schema(schema, user_input),
             errors=errors,
         )
 
@@ -305,6 +329,7 @@ class PersonTrackerConfigFlow(ConfigFlow, domain=DOMAIN):
                 data={
                     CONF_CAMERAS: self._cameras,
                     CONF_AI_TASK_ENTITY: self._ai_task_entity,
+                    CONF_AI_METHOD: self._ai_method,
                     **settings,
                 },
             )

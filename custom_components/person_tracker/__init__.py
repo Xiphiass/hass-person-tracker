@@ -25,6 +25,7 @@ from homeassistant.exceptions import ConfigEntryError, ConfigEntryNotReady
 from homeassistant.helpers import config_validation as cv
 
 from .const import (
+    CONF_AI_METHOD,
     CONF_AI_TASK_ENTITY,
     CONF_AUTHORITATIVE_TRACKER,
     CONF_CAMERA,
@@ -40,6 +41,7 @@ from .const import (
     CONF_SNAPSHOT_SOURCE,
     CONF_TTL,
     CONF_TRIGGERS,
+    DEFAULT_AI_METHOD,
     DEFAULT_COOLDOWN_SECONDS,
     DEFAULT_MIN_CONFIDENCE,
     DEFAULT_MOVE_CHECK,
@@ -116,6 +118,7 @@ async def _async_build_entry_data(
     visible error.
     """
     ai_task_entity_id = entry.data.get(CONF_AI_TASK_ENTITY)
+    ai_method = entry.data.get(CONF_AI_METHOD, DEFAULT_AI_METHOD)
     camera_configs = entry.data.get(CONF_CAMERAS, [])
     if pending := [
         entity_id
@@ -130,7 +133,7 @@ async def _async_build_entry_data(
             f"Waiting for {', '.join(pending)} to become available"
         )
 
-    if error := ai_task_error(hass, ai_task_entity_id):
+    if error := ai_task_error(hass, ai_task_entity_id, ai_method):
         raise ConfigEntryError(error)
 
     people: dict[str, Person] = {}
@@ -193,6 +196,7 @@ async def _async_build_entry_data(
 
     return PersonTrackerData(
         ai_task_entity_id=ai_task_entity_id,
+        ai_method=ai_method,
         people=people,
         cameras=cameras,
         cooldown_seconds=int(entry.data.get(CONF_COOLDOWN, DEFAULT_COOLDOWN_SECONDS)),

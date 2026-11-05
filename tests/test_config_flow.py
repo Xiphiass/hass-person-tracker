@@ -105,6 +105,7 @@ async def test_flow_creates_entry(
     assert result["data"] == {
         const.CONF_CAMERAS: [_stored(FRONT_DOOR)],
         const.CONF_AI_TASK_ENTITY: "ai_task.openai",
+        const.CONF_AI_METHOD: const.AI_METHOD_GENERATE_DATA,
         const.CONF_COOLDOWN: 45,
         const.CONF_MIN_CONFIDENCE: 0.8,
         const.CONF_RECHECK: False,
@@ -143,6 +144,7 @@ async def test_flow_multiple_cameras(
     assert result["data"] == {
         const.CONF_CAMERAS: [_stored(FRONT_DOOR), _stored(BACK_DOOR)],
         const.CONF_AI_TASK_ENTITY: "ai_task.openai",
+        const.CONF_AI_METHOD: const.AI_METHOD_GENERATE_DATA,
         const.CONF_COOLDOWN: 30,
         const.CONF_MIN_CONFIDENCE: 0.7,
         const.CONF_RECHECK: True,

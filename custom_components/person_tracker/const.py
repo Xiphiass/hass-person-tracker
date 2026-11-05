@@ -11,6 +11,7 @@ PLATFORMS = [Platform.DEVICE_TRACKER, Platform.IMAGE, Platform.SENSOR]
 # Config entry data keys (global settings).
 CONF_CAMERAS = "cameras"
 CONF_AI_TASK_ENTITY = "ai_task_entity"
+CONF_AI_METHOD = "ai_method"
 CONF_COOLDOWN = "cooldown"
 CONF_MIN_CONFIDENCE = "min_confidence"
 CONF_RECHECK = "recheck"
@@ -94,6 +95,24 @@ DEFAULT_SNAPSHOT_SOURCE = SNAPSHOT_SOURCE_CAMERA
 # default is visibly blocky, and the AI needs the detail).
 STREAM_FRAME_FFMPEG_OUTPUT = "-q:v 2"
 
+# Identification method (ADR 0010): the AI Task action that identifies the
+# Persons on a Snapshot. ``generate_data`` (the default) asks for structured
+# output with confidences and boxes; ``evaluate`` (HA 2026.11+) asks the
+# decision model one yes/no question per Person and gets probabilities.
+AI_METHOD_GENERATE_DATA = "generate_data"
+AI_METHOD_EVALUATE = "evaluate"
+AI_METHODS = [AI_METHOD_GENERATE_DATA, AI_METHOD_EVALUATE]
+DEFAULT_AI_METHOD = AI_METHOD_GENERATE_DATA
+# With ``evaluate`` every asked Person gets a probability, also the ones who
+# are not there. Below this one the Person counts as not reported at all (as
+# generate_data leaves out who it does not see), so an empty scene is not
+# mistaken for an uncertain sighting. Far below any confidence a boost
+# (ADR 0009) can lift past a sensible minimum confidence.
+EVALUATE_HIT_FLOOR = 0.2
+# The probability from which the "anyone else?" question counts as one
+# unknown person, so the Snapshot is kept as an Unknown snapshot.
+EVALUATE_UNKNOWN_PROBABILITY = 0.5
+
 # Config entry error keys (translations in translations/en.json).
 ERR_UNIQUE_PERSON = "unique_person"
 ERR_INVALID_PERSON_NAME = "invalid_person_name"
@@ -107,6 +126,8 @@ ERR_NO_CAMERAS = "no_cameras"
 ERR_NO_TRIGGERS = "no_triggers"
 ERR_INVALID_TRIGGER = "invalid_trigger"
 ERR_INVALID_AI_TASK_ENTITY = "invalid_ai_task_entity"
+ERR_EVALUATE_UNAVAILABLE = "evaluate_unavailable"
+ERR_EVALUATE_NOT_SUPPORTED = "evaluate_not_supported"
 
 ABORT_SINGLE_INSTANCE = "single_instance_allowed"
 ABORT_NO_AI_TASK_ENTITY = "no_ai_task_entity"
