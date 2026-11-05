@@ -172,6 +172,17 @@ def test_answers_accept_plain_dicts() -> None:
     }
 
 
+def test_every_answer_is_logged(caplog: pytest.LogCaptureFixture) -> None:
+    """Probabilities below the floor are not reported, but they are logged."""
+    caplog.set_level("DEBUG", logger="custom_components.person_tracker")
+    answers_to_data(
+        _answers(person_0=0.05, person_1=0.6, unknown_persons=0.1).answers,
+        {"person_0": _person("Alice"), "person_1": _person("Bob")},
+        ask_unknown=True,
+    )
+    assert "Evaluate answers: Alice 0.05, Bob 0.60; anyone else: 0.10" in caplog.text
+
+
 @pytest.mark.parametrize(
     "answers", [{}, {"person_0": SimpleNamespace(noul=1.5)}, {"person_0": None}]
 )

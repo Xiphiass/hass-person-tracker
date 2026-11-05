@@ -16,6 +16,7 @@ whether it can be offered at all.
 
 from __future__ import annotations
 
+from logging import getLogger
 from typing import Any
 
 from homeassistant.const import ATTR_SUPPORTED_FEATURES
@@ -27,6 +28,8 @@ from .const import (
     EVALUATE_UNKNOWN_PROBABILITY,
 )
 from .models import Person
+
+_LOGGER = getLogger(__package__)
 
 try:  # HA 2026.11+
     from homeassistant.components.ai_task.task import async_evaluate
@@ -183,17 +186,29 @@ def answers_to_data(
     unknown person from ``EVALUATE_UNKNOWN_PROBABILITY``, or as none when it
     was not asked.
     """
-    persons = []
-    for key, person in asked.items():
-        probability = _probability(answers, key)
-        if probability >= EVALUATE_HIT_FLOOR:
-            persons.append({"name": person.name, "confidence": probability})
-    unknown = 0
-    if (
-        ask_unknown
-        and _probability(answers, UNKNOWN_QUESTION) >= EVALUATE_UNKNOWN_PROBABILITY
-    ):
-        unknown = 1
+    probabilities = {
+        person.name: _probability(answers, key) for key, person in asked.items()
+    }
+    unknown_probability = (
+        _probability(answers, UNKNOWN_QUESTION) if ask_unknown else None
+    )
+    # Every answer, also the ones below the floor that are not reported:
+    # without them a decision model that answers low for everyone is silent.
+    _LOGGER.debug(
+        "Evaluate answers: %s; anyone else: %s",
+        ", ".join(f"{name} {value:.2f}" for name, value in probabilities.items())
+        or "no one asked",
+        "not asked" if unknown_probability is None else f"{unknown_probability:.2f}",
+    )
+    persons = [
+        {"name": name, "confidence": value}
+        for name, value in probabilities.items()
+        if value >= EVALUATE_HIT_FLOOR
+    ]
+    unknown = int(
+        unknown_probability is not None
+        and unknown_probability >= EVALUATE_UNKNOWN_PROBABILITY
+    )
     return {"persons": persons, "unknown_persons": unknown}
 
 
