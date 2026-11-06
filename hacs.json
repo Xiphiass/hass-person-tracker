@@ -1,3 +1,5 @@
 {
-  "name": "Person Tracker"
+  "name": "Person Tracker",
+  "zip_release": true,
+  "filename": "person_tracker.zip"
 }

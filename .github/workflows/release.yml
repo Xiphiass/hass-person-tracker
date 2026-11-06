@@ -1,0 +1,36 @@
+# On a published GitHub release: write the tag (without the "v") into the
+# manifest's version, zip the integration and attach the zip to the release.
+# HACS installs that zip (hacs.json: zip_release), so manifest.json on main
+# keeps the placeholder version 0.0.0.
+name: Release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  zip:
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ github.event.release.tag_name }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set the manifest version from the tag
+        working-directory: custom_components/person_tracker
+        run: |
+          jq --arg version "${TAG#v}" '.version = $version' manifest.json > manifest.tmp
+          mv manifest.tmp manifest.json
+          jq -r .version manifest.json
+
+      - name: Zip the integration
+        working-directory: custom_components/person_tracker
+        run: zip -r "$GITHUB_WORKSPACE/person_tracker.zip" . -x '*__pycache__*'
+
+      - name: Attach the zip to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$TAG" person_tracker.zip --clobber
