@@ -32,6 +32,7 @@ CONF_SUPPORTING_FLOOR_ENTITY = "supporting_floor_entity"
 # Per-camera config keys.
 CONF_CAMERA = "camera"
 CONF_TRIGGERS = "triggers"
+CONF_SNAPSHOT_SOURCE = "snapshot_source"
 
 # Config flow helper keys.
 CONF_ADD_CAMERA = "add_camera"
@@ -80,6 +81,18 @@ REFERENCE_IMAGE_EXTENSIONS = frozenset(
 # rebuilt when the original changes. The originals are never touched.
 REFERENCE_IMAGE_MAX_SIZE = 512
 REFERENCE_CACHE_DIR = "reference_cache"
+
+# Snapshot source per camera (Issue #47): the camera's own still image (the
+# default), or one frame of its video stream, for cameras whose stills are
+# low resolution (e.g. UniFi Protect 2K cameras: 640 x 360) while the stream
+# is not. A camera without a usable stream falls back to its still image.
+SNAPSHOT_SOURCE_CAMERA = "camera"
+SNAPSHOT_SOURCE_STREAM = "stream"
+SNAPSHOT_SOURCES = [SNAPSHOT_SOURCE_CAMERA, SNAPSHOT_SOURCE_STREAM]
+DEFAULT_SNAPSHOT_SOURCE = SNAPSHOT_SOURCE_CAMERA
+# ffmpeg output options for the stream frame: near-best JPEG quality (the
+# default is visibly blocky, and the AI needs the detail).
+STREAM_FRAME_FFMPEG_OUTPUT = "-q:v 2"
 
 # Config entry error keys (translations in translations/en.json).
 ERR_UNIQUE_PERSON = "unique_person"

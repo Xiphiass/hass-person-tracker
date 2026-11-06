@@ -29,6 +29,11 @@ BACK_DOOR = {
 }
 
 
+def _stored(camera: dict[str, Any]) -> dict[str, Any]:
+    """*camera* as the flow stores it, with the default snapshot source."""
+    return {**camera, const.CONF_SNAPSHOT_SOURCE: const.SNAPSHOT_SOURCE_CAMERA}
+
+
 @pytest.fixture
 def cameras(hass: HomeAssistant) -> None:
     """Two cameras in areas, each with a trigger."""
@@ -98,7 +103,7 @@ async def test_flow_creates_entry(
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["title"] == "Person Tracker"
     assert result["data"] == {
-        const.CONF_CAMERAS: [FRONT_DOOR],
+        const.CONF_CAMERAS: [_stored(FRONT_DOOR)],
         const.CONF_AI_TASK_ENTITY: "ai_task.openai",
         const.CONF_COOLDOWN: 45,
         const.CONF_MIN_CONFIDENCE: 0.8,
@@ -136,7 +141,7 @@ async def test_flow_multiple_cameras(
     )
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["data"] == {
-        const.CONF_CAMERAS: [FRONT_DOOR, BACK_DOOR],
+        const.CONF_CAMERAS: [_stored(FRONT_DOOR), _stored(BACK_DOOR)],
         const.CONF_AI_TASK_ENTITY: "ai_task.openai",
         const.CONF_COOLDOWN: 30,
         const.CONF_MIN_CONFIDENCE: 0.7,
@@ -265,7 +270,7 @@ async def test_reconfigure_add_camera(
         assert result["reason"] == "reconfigure_successful"
         await hass.async_block_till_done()
 
-        assert entry.data[const.CONF_CAMERAS] == [FRONT_DOOR, BACK_DOOR]
+        assert entry.data[const.CONF_CAMERAS] == [FRONT_DOOR, _stored(BACK_DOOR)]
         assert entry.state is ConfigEntryState.LOADED
         assert set(entry.runtime_data.cameras) == {
             "camera.front_door",

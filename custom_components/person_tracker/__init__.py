@@ -37,12 +37,14 @@ from .const import (
     CONF_RECHECK,
     CONF_SUPPORTING_AREA_ENTITY,
     CONF_SUPPORTING_FLOOR_ENTITY,
+    CONF_SNAPSHOT_SOURCE,
     CONF_TTL,
     CONF_TRIGGERS,
     DEFAULT_COOLDOWN_SECONDS,
     DEFAULT_MIN_CONFIDENCE,
     DEFAULT_MOVE_CHECK,
     DEFAULT_RECHECK,
+    DEFAULT_SNAPSHOT_SOURCE,
     DEFAULT_TTL_MINUTES,
     DOMAIN,
     PLATFORMS,
@@ -182,7 +184,11 @@ async def _async_build_entry_data(
             )
             continue
         cameras[camera_entity_id] = Camera(
-            entity_id=camera_entity_id, triggers=triggers
+            entity_id=camera_entity_id,
+            triggers=triggers,
+            snapshot_source=camera_data.get(
+                CONF_SNAPSHOT_SOURCE, DEFAULT_SNAPSHOT_SOURCE
+            ),
         )
 
     return PersonTrackerData(
