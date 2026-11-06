@@ -39,7 +39,9 @@ The integration is configured entirely through the Home Assistant UI:
 1. Go to **Settings** -> **Devices & Services**.
 2. Click **Add Integration** and search for **Person Tracker**.
 3. Follow the instructions to:
-   - Select the cameras to monitor and assign trigger binary sensors to them.
+   - Select the cameras to monitor and assign trigger binary sensors to them. For each camera you can also pick the **snapshot source**:
+     - **Camera snapshot** (default) uses the camera's still image.
+     - **Video stream** grabs one full-resolution frame from the camera's stream (through Home Assistant's FFmpeg). Use it when the camera's still images are low resolution: UniFi Protect 2K cameras such as the G4 Instant only deliver 640 x 360 stills, which leaves faces a few pixels wide, while their stream is 2688 x 1512. Each detection on that camera takes about 1-2 seconds longer. If the camera has no stream or no frame can be read, the camera snapshot is used instead, with one warning in the log.
    - Choose the AI Task entity for identification.
    - Configure the detection cooldown period and the minimum confidence (default 0.7). Identifications the AI reports below the minimum confidence update no tracker; the snapshot is kept as an unknown snapshot instead. Raise the value if people get mixed up.
    - Choose whether to re-check before expiry (default on). A person who sits still triggers no new detection, so shortly before their sighting expires the camera that last saw them takes one more snapshot and the AI is asked about that person only. A confirmation keeps them at home; otherwise the sighting expires as usual. This costs one AI call per expiry while someone stays in view. With a supporting tracker, a person whose supporting area changed after the sighting and has held for two minutes is not re-checked, since the camera would only show the room they left.

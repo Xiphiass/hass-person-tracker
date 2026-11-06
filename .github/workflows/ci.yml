@@ -25,7 +25,7 @@ jobs:
           # pytest-homeassistant-custom-component pins homeassistant==2026.10.2
           # and brings the test harness; the rest are requirements of the HA
           # components the tests set up (ai_task, conversation, http, ...).
-          uv pip install pytest-homeassistant-custom-component==0.13.373 PyTurboJPEG==1.8.3 av==19.0.0 paho-mqtt hassil gazetteer-matcher home-assistant-intents
+          uv pip install pytest-homeassistant-custom-component==0.13.373 PyTurboJPEG==1.8.3 av==19.0.0 ha-ffmpeg==3.2.2 paho-mqtt hassil gazetteer-matcher home-assistant-intents
       - name: Check formatting
         run: uvx black --check .
       - name: Run tests

@@ -6,7 +6,11 @@
         "description": "Füge die Kameras hinzu, die überwacht werden sollen. Eine Kamera muss einem HA-Bereich zugewiesen sein und braucht mindestens einen auslösenden Binärsensor. Personen werden anschließend auf der Integrationsseite hinzugefügt.",
         "data": {
           "camera": "Kamera",
-          "triggers": "Auslösende(r) Binärsensor(en)"
+          "triggers": "Auslösende(r) Binärsensor(en)",
+          "snapshot_source": "Bildquelle"
+        },
+        "data_description": {
+          "snapshot_source": "Woher das Bild für die Erkennung kommt. Kamera-Schnappschuss nutzt das Standbild der Kamera. Videostream holt ein Bild in voller Auflösung aus dem Stream der Kamera; nutze es, wenn das Standbild niedrig aufgelöst ist (UniFi-Protect-2K-Kameras liefern Standbilder mit 640 x 360). Jede Erkennung dauert damit 1-2 Sekunden länger, und wenn der Stream ausfällt, wird das Standbild verwendet."
         }
       },
       "cameras_more": {
@@ -21,7 +25,11 @@
         "description": "Füge eine Kamera hinzu, die überwacht werden soll. Sie muss einem HA-Bereich zugewiesen sein und braucht mindestens einen auslösenden Binärsensor.",
         "data": {
           "camera": "Kamera",
-          "triggers": "Auslösende(r) Binärsensor(en)"
+          "triggers": "Auslösende(r) Binärsensor(en)",
+          "snapshot_source": "Bildquelle"
+        },
+        "data_description": {
+          "snapshot_source": "Woher das Bild für die Erkennung kommt. Kamera-Schnappschuss nutzt das Standbild der Kamera. Videostream holt ein Bild in voller Auflösung aus dem Stream der Kamera; nutze es, wenn das Standbild niedrig aufgelöst ist (UniFi-Protect-2K-Kameras liefern Standbilder mit 640 x 360). Jede Erkennung dauert damit 1-2 Sekunden länger, und wenn der Stream ausfällt, wird das Standbild verwendet."
         }
       },
       "ai_task": {
@@ -51,7 +59,7 @@
         "description": "Was möchtest du ändern?",
         "menu_options": {
           "camera_add": "Kamera hinzufügen",
-          "camera_edit": "Auslöser einer Kamera ändern",
+          "camera_edit": "Auslöser oder Bildquelle einer Kamera ändern",
           "camera_remove": "Kameras entfernen",
           "ai_task": "KI-Aufgaben-Entität ändern",
           "detection": "Erkennungseinstellungen ändern"
@@ -65,10 +73,14 @@
         }
       },
       "camera_triggers": {
-        "title": "Auslöser ändern",
-        "description": "Auslöser für {camera}.",
+        "title": "Kamera ändern",
+        "description": "Auslöser und Bildquelle für {camera}.",
         "data": {
-          "triggers": "Auslösende(r) Binärsensor(en)"
+          "triggers": "Auslösende(r) Binärsensor(en)",
+          "snapshot_source": "Bildquelle"
+        },
+        "data_description": {
+          "snapshot_source": "Woher das Bild für die Erkennung kommt. Kamera-Schnappschuss nutzt das Standbild der Kamera. Videostream holt ein Bild in voller Auflösung aus dem Stream der Kamera; nutze es, wenn das Standbild niedrig aufgelöst ist (UniFi-Protect-2K-Kameras liefern Standbilder mit 640 x 360). Jede Erkennung dauert damit 1-2 Sekunden länger, und wenn der Stream ausfällt, wird das Standbild verwendet."
         }
       },
       "camera_remove": {
@@ -161,6 +173,14 @@
       },
       "floor": {
         "name": "Aktuelle Etage"
+      }
+    }
+  },
+  "selector": {
+    "snapshot_source": {
+      "options": {
+        "camera": "Kamera-Schnappschuss",
+        "stream": "Videostream (volle Auflösung)"
       }
     }
   }

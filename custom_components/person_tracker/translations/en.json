@@ -6,7 +6,11 @@
         "description": "Add the cameras to watch. A camera must be assigned to an HA area and needs at least one trigger binary sensor. People are added afterwards from the integration page.",
         "data": {
           "camera": "Camera",
-          "triggers": "Trigger binary sensor(s)"
+          "triggers": "Trigger binary sensor(s)",
+          "snapshot_source": "Snapshot source"
+        },
+        "data_description": {
+          "snapshot_source": "Where the picture for identification comes from. Camera snapshot uses the camera's still image. Video stream grabs one full-resolution frame from the camera's stream; use it when the still image is low resolution (UniFi Protect 2K cameras deliver 640 x 360 stills). It takes 1-2 seconds longer per detection, and falls back to the still image if the stream fails."
         }
       },
       "cameras_more": {
@@ -21,7 +25,11 @@
         "description": "Add a camera to watch. It must be assigned to an HA area and needs at least one trigger binary sensor.",
         "data": {
           "camera": "Camera",
-          "triggers": "Trigger binary sensor(s)"
+          "triggers": "Trigger binary sensor(s)",
+          "snapshot_source": "Snapshot source"
+        },
+        "data_description": {
+          "snapshot_source": "Where the picture for identification comes from. Camera snapshot uses the camera's still image. Video stream grabs one full-resolution frame from the camera's stream; use it when the still image is low resolution (UniFi Protect 2K cameras deliver 640 x 360 stills). It takes 1-2 seconds longer per detection, and falls back to the still image if the stream fails."
         }
       },
       "ai_task": {
@@ -51,7 +59,7 @@
         "description": "What do you want to change?",
         "menu_options": {
           "camera_add": "Add a camera",
-          "camera_edit": "Change a camera's triggers",
+          "camera_edit": "Change a camera's triggers or snapshot source",
           "camera_remove": "Remove cameras",
           "ai_task": "Change the AI task entity",
           "detection": "Change the detection settings"
@@ -65,10 +73,14 @@
         }
       },
       "camera_triggers": {
-        "title": "Change triggers",
-        "description": "Triggers for {camera}.",
+        "title": "Change camera",
+        "description": "Triggers and snapshot source for {camera}.",
         "data": {
-          "triggers": "Trigger binary sensor(s)"
+          "triggers": "Trigger binary sensor(s)",
+          "snapshot_source": "Snapshot source"
+        },
+        "data_description": {
+          "snapshot_source": "Where the picture for identification comes from. Camera snapshot uses the camera's still image. Video stream grabs one full-resolution frame from the camera's stream; use it when the still image is low resolution (UniFi Protect 2K cameras deliver 640 x 360 stills). It takes 1-2 seconds longer per detection, and falls back to the still image if the stream fails."
         }
       },
       "camera_remove": {
@@ -161,6 +173,14 @@
       },
       "floor": {
         "name": "Current floor"
+      }
+    }
+  },
+  "selector": {
+    "snapshot_source": {
+      "options": {
+        "camera": "Camera snapshot",
+        "stream": "Video stream (full resolution)"
       }
     }
   }

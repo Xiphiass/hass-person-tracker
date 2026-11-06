@@ -15,6 +15,7 @@ from .const import (
     DEFAULT_MIN_CONFIDENCE,
     DEFAULT_MOVE_CHECK,
     DEFAULT_RECHECK,
+    DEFAULT_SNAPSHOT_SOURCE,
     DEFAULT_TTL_MINUTES,
     DOMAIN,
 )
@@ -87,6 +88,8 @@ class Camera:
 
     entity_id: str
     triggers: list[str] = field(default_factory=list)
+    # Where the frame for Identification comes from (Issue #47).
+    snapshot_source: str = DEFAULT_SNAPSHOT_SOURCE
 
 
 @dataclass

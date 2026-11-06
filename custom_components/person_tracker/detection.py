@@ -39,6 +39,7 @@ and the next trigger edge runs a fresh detection.
 from __future__ import annotations
 
 import asyncio
+import shlex
 from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta
 from functools import partial
@@ -52,7 +53,12 @@ from homeassistant.components.ai_task.task import (
     GenDataTaskResult,
     async_generate_data,
 )
-from homeassistant.components.camera import Image, async_get_image
+from homeassistant.components import ffmpeg
+from homeassistant.components.camera import (
+    Image,
+    async_get_image,
+    async_get_stream_source,
+)
 from homeassistant.const import STATE_OFF, STATE_ON
 from homeassistant.core import Event, HomeAssistant, State
 from homeassistant.exceptions import HomeAssistantError
@@ -74,6 +80,8 @@ from .const import (
     DOMAIN,
     FRAMES_DIR,
     RECHECK_LEAD_SECONDS,
+    SNAPSHOT_SOURCE_STREAM,
+    STREAM_FRAME_FFMPEG_OUTPUT,
     SIGNAL_TRACKER_UPDATE_PERSON,
     MOVE_CHECK_GROUP_SECONDS,
     SUPPORTING_SETTLE_SECONDS,
@@ -280,6 +288,8 @@ class DetectionCoordinator:
         self._hass = hass
         self._data = data
         self._last_run: dict[str, datetime] = {}
+        # Cameras whose stream frame failed, warned once (Issue #47).
+        self._stream_frame_warned: set[str] = set()
         self._unsubscribes: list[Callable[[], None]] = []
         # Pending presence re-check timers, keyed by person subentry ID.
         self._recheck_timers: dict[str, Callable[[], None]] = {}
@@ -895,10 +905,50 @@ class DetectionCoordinator:
     async def _async_fetch_snapshot(self, camera: Camera) -> Image:
         """Fetch a snapshot of *camera*.
 
+        A camera whose snapshot source is its video stream gets one frame of
+        the stream (Issue #47), or its own still image when that fails.
         Raises HomeAssistantError when the camera can't provide one; the
         caller skips the run without changing state (Issue #5).
         """
+        if camera.snapshot_source == SNAPSHOT_SOURCE_STREAM:
+            if (image := await self._async_fetch_stream_frame(camera)) is not None:
+                return image
         return await async_get_image(self._hass, camera.entity_id)
+
+    async def _async_fetch_stream_frame(self, camera: Camera) -> Image | None:
+        """One frame of *camera*'s video stream, at its full resolution.
+
+        Returns None when the camera has no stream or ffmpeg delivers no
+        frame, so the caller falls back to the still image: a broken stream
+        must not stop detection. Warned once per camera until a frame works
+        again. The stream URL can carry credentials and is never logged.
+        """
+        source: str | None = None
+        try:
+            source = await async_get_stream_source(self._hass, camera.entity_id)
+        except HomeAssistantError as err:
+            reason = f"its stream source is unavailable ({err})"
+        else:
+            reason = "it has no video stream"
+        content: bytes | None = None
+        if source:
+            reason = "no frame could be read from its video stream"
+            content = await ffmpeg.async_get_image(
+                self._hass,
+                _ffmpeg_input(source),
+                extra_cmd=STREAM_FRAME_FFMPEG_OUTPUT,
+            )
+        if not content:
+            if camera.entity_id not in self._stream_frame_warned:
+                self._stream_frame_warned.add(camera.entity_id)
+                _LOGGER.warning(
+                    "Using the camera snapshot of %s instead of a stream " "frame: %s.",
+                    camera.entity_id,
+                    reason,
+                )
+            return None
+        self._stream_frame_warned.discard(camera.entity_id)
+        return Image(content_type="image/jpeg", content=content)
 
     async def _async_save_person_thumbnail(
         self, person: Person, image: Image, bbox: list[float] | None
@@ -985,6 +1035,18 @@ class DetectionCoordinator:
                 removed,
                 UNKNOWN_SNAPSHOT_RETENTION_DAYS,
             )
+
+
+def _ffmpeg_input(source: str) -> str:
+    """The ffmpeg input for stream URL *source*.
+
+    RTSP goes over TCP: ffmpeg defaults to UDP, which loses packets (and so
+    corrupts the frame) behind NAT and in containers. The URL is quoted, as
+    haffmpeg splits an input with options shell-style.
+    """
+    if source.lower().startswith(("rtsp://", "rtsps://")):
+        return f"-rtsp_transport tcp -i {shlex.quote(source)}"
+    return source
 
 
 def _with_reference_images(people: list[Person]) -> list[Person]:

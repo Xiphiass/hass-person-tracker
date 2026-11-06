@@ -26,6 +26,9 @@ from homeassistant.helpers.selector import (
     NumberSelector,
     NumberSelectorConfig,
     NumberSelectorMode,
+    SelectSelector,
+    SelectSelectorConfig,
+    SelectSelectorMode,
     TextSelector,
     TextSelectorConfig,
 )
@@ -47,18 +50,21 @@ from .const import (
     CONF_REMOVE_CAMERAS,
     CONF_SUPPORTING_AREA_ENTITY,
     CONF_SUPPORTING_FLOOR_ENTITY,
+    CONF_SNAPSHOT_SOURCE,
     CONF_TTL,
     CONF_TRIGGERS,
     DEFAULT_COOLDOWN_SECONDS,
     DEFAULT_MIN_CONFIDENCE,
     DEFAULT_MOVE_CHECK,
     DEFAULT_RECHECK,
+    DEFAULT_SNAPSHOT_SOURCE,
     DEFAULT_TTL_MINUTES,
     DOMAIN,
     ERR_NO_CAMERAS,
     MAX_COOLDOWN_SECONDS,
     MAX_TTL_MINUTES,
     PEOPLE_DIR,
+    SNAPSHOT_SOURCES,
     SUBENTRY_PERSON,
 )
 from .helpers import get_default_ai_task_entity_id, get_person_images_dir
@@ -92,6 +98,18 @@ _PERSON_SCHEMA = probatio.Schema(
     }
 )
 _SUPPORTING_KEYS = (CONF_SUPPORTING_AREA_ENTITY, CONF_SUPPORTING_FLOOR_ENTITY)
+# Where a camera's frame for Identification comes from (Issue #47).
+_SNAPSHOT_SOURCE_FIELD = {
+    probatio.Optional(
+        CONF_SNAPSHOT_SOURCE, default=DEFAULT_SNAPSHOT_SOURCE
+    ): SelectSelector(
+        SelectSelectorConfig(
+            options=SNAPSHOT_SOURCES,
+            mode=SelectSelectorMode.LIST,
+            translation_key=CONF_SNAPSHOT_SOURCE,
+        )
+    )
+}
 _TRIGGERS_SELECTOR = EntitySelector(
     EntitySelectorConfig(domain="binary_sensor", multiple=True)
 )
@@ -101,10 +119,11 @@ _CAMERA_SCHEMA = probatio.Schema(
             EntitySelectorConfig(domain="camera")
         ),
         probatio.Required(CONF_TRIGGERS): _TRIGGERS_SELECTOR,
+        **_SNAPSHOT_SOURCE_FIELD,
     }
 )
 _TRIGGERS_SCHEMA = probatio.Schema(
-    {probatio.Required(CONF_TRIGGERS): _TRIGGERS_SELECTOR}
+    {probatio.Required(CONF_TRIGGERS): _TRIGGERS_SELECTOR, **_SNAPSHOT_SOURCE_FIELD}
 )
 _CAMERA_MORE_SCHEMA = probatio.Schema(
     {probatio.Required(CONF_ADD_CAMERA): BooleanSelector()}
@@ -223,7 +242,15 @@ class PersonTrackerConfigFlow(ConfigFlow, domain=DOMAIN):
             elif error := triggers_error(self.hass, triggers):
                 errors[CONF_TRIGGERS] = error
             else:
-                self._cameras.append({CONF_CAMERA: camera_id, CONF_TRIGGERS: triggers})
+                self._cameras.append(
+                    {
+                        CONF_CAMERA: camera_id,
+                        CONF_TRIGGERS: triggers,
+                        CONF_SNAPSHOT_SOURCE: user_input.get(
+                            CONF_SNAPSHOT_SOURCE, DEFAULT_SNAPSHOT_SOURCE
+                        ),
+                    }
+                )
                 if self._reconfiguring:
                     return self._save(**{CONF_CAMERAS: self._cameras})
                 return await self.async_step_cameras_more()
@@ -329,7 +356,7 @@ class PersonTrackerConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_camera_triggers(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Change the triggers of the picked camera."""
+        """Change the triggers and snapshot source of the picked camera."""
         index = self._camera_ids().index(self._edit_camera)
         errors: dict[str, str] = {}
         if user_input is not None:
@@ -340,6 +367,9 @@ class PersonTrackerConfigFlow(ConfigFlow, domain=DOMAIN):
                 self._cameras[index] = {
                     CONF_CAMERA: self._edit_camera,
                     CONF_TRIGGERS: triggers,
+                    CONF_SNAPSHOT_SOURCE: user_input.get(
+                        CONF_SNAPSHOT_SOURCE, DEFAULT_SNAPSHOT_SOURCE
+                    ),
                 }
                 return self._save(**{CONF_CAMERAS: self._cameras})
         return self.async_show_form(
