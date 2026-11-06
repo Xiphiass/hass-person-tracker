@@ -7,6 +7,6 @@
   "issue_tracker": "https://github.com/Xiphiass/hass-person-tracker/issues",
   "iot_class": "calculated",
   "requirements": [],
-  "version": "0.1.0-rc1",
+  "version": "0.0.0",
   "dependencies": ["ai_task", "ffmpeg", "media_source"]
 }
