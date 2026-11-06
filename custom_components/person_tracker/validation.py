@@ -13,9 +13,13 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 
 from .const import (
+    AI_METHOD_EVALUATE,
+    DEFAULT_AI_METHOD,
     DOMAIN,
     ERR_CAMERA_WITHOUT_AREA,
     ERR_DUPLICATE_CAMERA,
+    ERR_EVALUATE_NOT_SUPPORTED,
+    ERR_EVALUATE_UNAVAILABLE,
     ERR_INVALID_AI_TASK_ENTITY,
     ERR_INVALID_AUTHORITATIVE_TRACKER,
     ERR_INVALID_CAMERA,
@@ -26,6 +30,7 @@ from .const import (
     ERR_OWN_SUPPORTING_ENTITY,
     ERR_UNIQUE_PERSON,
 )
+from .evaluation import evaluate_available, supports_evaluate
 from .helpers import get_entity_area_id
 from .models import person_slug
 
@@ -117,8 +122,22 @@ def triggers_error(hass: HomeAssistant, triggers: list[str]) -> str | None:
     return None
 
 
-def ai_task_error(hass: HomeAssistant, entity_id: str | None) -> str | None:
-    """Check the AI task entity used for identification."""
+def ai_task_error(
+    hass: HomeAssistant,
+    entity_id: str | None,
+    method: str = DEFAULT_AI_METHOD,
+) -> str | None:
+    """Check the AI task entity and the method used for identification.
+
+    The evaluate method (ADR 0010) needs HA 2026.11 and an entity that
+    supports it. An entity without a state yet is not judged on its
+    features: setup waits for it to load.
+    """
     if not entity_id or _domain_of(hass, entity_id) != "ai_task":
         return ERR_INVALID_AI_TASK_ENTITY
+    if method == AI_METHOD_EVALUATE:
+        if not evaluate_available():
+            return ERR_EVALUATE_UNAVAILABLE
+        if hass.states.get(entity_id) and not supports_evaluate(hass, entity_id):
+            return ERR_EVALUATE_NOT_SUPPORTED
     return None

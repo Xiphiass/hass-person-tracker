@@ -34,9 +34,13 @@
       },
       "ai_task": {
         "title": "AI task",
-        "description": "Select the AI task entity used to identify people on camera snapshots. It must support image attachments.",
+        "description": "Select the AI task entity used to identify people on camera snapshots, and how it is asked. It must support image attachments.",
         "data": {
-          "ai_task_entity": "AI task entity"
+          "ai_task_entity": "AI task entity",
+          "ai_method": "Identification method"
+        },
+        "data_description": {
+          "ai_method": "Generate data asks the AI for structured output with confidences and boxes around each person (cropped last-seen pictures). Evaluate (Home Assistant 2026.11+) asks your decision model one yes/no question per person and uses its probabilities as confidences; it gives no boxes, so last-seen pictures show the full frame. The entity must support Evaluate."
         }
       },
       "detection": {
@@ -61,7 +65,7 @@
           "camera_add": "Add a camera",
           "camera_edit": "Change a camera's triggers or snapshot source",
           "camera_remove": "Remove cameras",
-          "ai_task": "Change the AI task entity",
+          "ai_task": "Change the AI task entity or method",
           "detection": "Change the detection settings"
         }
       },
@@ -98,7 +102,9 @@
       "no_cameras": "At least one camera must remain.",
       "no_triggers": "This camera needs at least one trigger binary sensor.",
       "invalid_trigger": "One or more triggers are not binary_sensor entities.",
-      "invalid_ai_task_entity": "The AI task entity must be an existing AI task entity."
+      "invalid_ai_task_entity": "The AI task entity must be an existing AI task entity.",
+      "evaluate_unavailable": "The evaluate method needs Home Assistant 2026.11 or newer.",
+      "evaluate_not_supported": "This AI task entity does not support Evaluate; pick another entity or the generate data method."
     },
     "abort": {
       "single_instance_allowed": "Only a single configuration allowed.",
@@ -181,6 +187,12 @@
       "options": {
         "camera": "Camera snapshot",
         "stream": "Video stream (full resolution)"
+      }
+    },
+    "ai_method": {
+      "options": {
+        "generate_data": "Generate data (structured output)",
+        "evaluate": "Evaluate (decision model)"
       }
     }
   }

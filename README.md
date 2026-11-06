@@ -42,7 +42,9 @@ The integration is configured entirely through the Home Assistant UI:
    - Select the cameras to monitor and assign trigger binary sensors to them. For each camera you can also pick the **snapshot source**:
      - **Camera snapshot** (default) uses the camera's still image.
      - **Video stream** grabs one full-resolution frame from the camera's stream (through Home Assistant's FFmpeg). Use it when the camera's still images are low resolution: UniFi Protect 2K cameras such as the G4 Instant only deliver 640 x 360 stills, which leaves faces a few pixels wide, while their stream is 2688 x 1512. Each detection on that camera takes about 1-2 seconds longer. If the camera has no stream or no frame can be read, the camera snapshot is used instead, with one warning in the log.
-   - Choose the AI Task entity for identification.
+   - Choose the AI Task entity for identification and, on Home Assistant 2026.11 or later, the identification method:
+     - **Generate data** (default) asks the AI for structured output: who is visible, with a confidence and a box around each person, which crops the last-seen picture.
+     - **Evaluate** uses `ai_task.evaluate`: your decision model gets one yes/no question per person ("is this person in the snapshot?", with their reference photos and description) plus, on a detection run, one about anyone else, and its probabilities are used as the confidences. The questions are neutral ("is this person in the snapshot?", not "is this clearly them?"), so your minimum confidence is what decides how sure is sure enough. Everything after that (minimum confidence, supporting tracker boost, unknown snapshots, re-checks, move checks) works the same. A person below 0.2 counts as not seen, and the snapshot is kept as an unknown snapshot when the "anyone else?" answer reaches 0.5. Evaluate gives no boxes, so last-seen pictures show the full frame. The selected AI Task entity must support Evaluate (your decision model).
    - Configure the detection cooldown period and the minimum confidence (default 0.7). Identifications the AI reports below the minimum confidence update no tracker; the snapshot is kept as an unknown snapshot instead. Raise the value if people get mixed up.
    - Choose whether to re-check before expiry (default on). A person who sits still triggers no new detection, so shortly before their sighting expires the camera that last saw them takes one more snapshot and the AI is asked about that person only. A confirmation keeps them at home; otherwise the sighting expires as usual. This costs one AI call per expiry while someone stays in view. With a supporting tracker, a person whose supporting area changed after the sighting and has held for two minutes is not re-checked, since the camera would only show the room they left.
    - Choose whether to run a move check (default on). It only affects persons with a supporting area entity (see below). When a person's supporting area changes to another area that has cameras, holds there for two minutes, and no camera has seen them since the change, every camera of that area takes a snapshot and the AI is asked about that person only. A confirmation is a normal camera sighting, so the camera leads again. A miss or a failed run changes nothing, and the move check is not retried. Cameras that ran within the cooldown are left out, since they just answered, and the move check claims the cooldown of the cameras it uses. It never saves an unknown snapshot. It is skipped when the authoritative tracker reports the person away or the person has no reference images, and persons whose moves into the same area settle within ten seconds of each other share one run per camera. A return to the area the supporting tracker last settled in, such as after it was briefly `unavailable`, is no move. A move that has not settled when the integration loads (for example right after a reload or a restart) is still checked. This costs at most one AI call per camera of the new area per move.
@@ -96,10 +98,21 @@ They mirror the tracker, so they follow the same rules: the supporting tracker's
 
 ## Requirements
 
-- Home Assistant Core 2025.8 or later (for AI Task integration support). The integration's own icon shows from Home Assistant 2026.3 on, which loads brand images shipped with custom integrations.
+- Home Assistant Core 2025.8 or later (for AI Task integration support), or 2026.11 or later for the Evaluate identification method. The integration's own icon shows from Home Assistant 2026.3 on, which loads brand images shipped with custom integrations.
 - A configured AI provider integration (e.g., OpenAI, Google Generative AI, Ollama) that exposes AI Task entities.
 - Cameras assigned to Home Assistant areas.
 - Binary sensors to act as detection triggers (e.g., motion or person-detected sensors).
+
+### Evaluate: the decision model must receive the images
+
+Evaluate only works if the snapshot and the reference photos actually reach the decision model. Some routes drop them silently, or with an error, and the model then answers from the question text alone. You can recognize this by every probability staying low (around 0.1 to 0.3) whoever is in view. Known routes, as of November 2026:
+
+- **vLLM** (`/v1/systemone`): images need vLLM 0.33 or later. 0.32 rejects them for next-token models such as Qwen3.5/3.6 ("this model does not take image inputs").
+- **LiteLLM → vLLM** (`hosted_vllm/`): image support is merged on LiteLLM's `main` but not yet in a release (up to 1.108.1). Until then, point the decision entity at vLLM directly.
+- **LiteLLM → OpenRouter**: the OpenRouter decision route takes no images. With `drop_params: true` they are dropped without an error.
+- **LiteLLM → Cloudflare** (Clef): takes images, but at most 4 per request. The snapshot plus every reference photo counts, so this only fits very few reference photos.
+
+To check a route, run `ai_task.evaluate` with one camera snapshot attached and simple questions such as "Is there a person in this image?" and "Is there a dog in this image?". Clear answers near 1 and 0 mean the images arrive. Your proxy's token count tells you too: an image adds hundreds to thousands of tokens, a text-only request is about 100.
 
 ## Documentation
 

@@ -32,6 +32,9 @@ _Avoid_: sample picture, training set
 The AI step that decides which Persons appear in a Snapshot, constrained to the known Persons, using their reference images.
 _Avoid_: recognition, classification
 
+**Identification method**:
+The AI Task action Identification uses: generate data (structured output with confidences and boxes, the default) or evaluate (one yes/no question per Person, answered with a probability by the decision model; ADR 0010). A global setting.
+
 **Description**:
 Optional free-text distinguishing features of a Person (height, build, hair, glasses, ...), sent to Identification alongside the reference images. Supports telling Persons apart; on its own it never justifies a confident identification.
 
