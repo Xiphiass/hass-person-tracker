@@ -103,6 +103,17 @@ They mirror the tracker, so they follow the same rules: the supporting tracker's
 - Cameras assigned to Home Assistant areas.
 - Binary sensors to act as detection triggers (e.g., motion or person-detected sensors).
 
+### Evaluate: the decision model must receive the images
+
+Evaluate only works if the snapshot and the reference photos actually reach the decision model. Some routes drop them silently, or with an error, and the model then answers from the question text alone. You can recognize this by every probability staying low (around 0.1 to 0.3) whoever is in view. Known routes, as of November 2026:
+
+- **vLLM** (`/v1/systemone`): images need vLLM 0.33 or later. 0.32 rejects them for next-token models such as Qwen3.5/3.6 ("this model does not take image inputs").
+- **LiteLLM → vLLM** (`hosted_vllm/`): image support is merged on LiteLLM's `main` but not yet in a release (up to 1.108.1). Until then, point the decision entity at vLLM directly.
+- **LiteLLM → OpenRouter**: the OpenRouter decision route takes no images. With `drop_params: true` they are dropped without an error.
+- **LiteLLM → Cloudflare** (Clef): takes images, but at most 4 per request. The snapshot plus every reference photo counts, so this only fits very few reference photos.
+
+To check a route, run `ai_task.evaluate` with one camera snapshot attached and simple questions such as "Is there a person in this image?" and "Is there a dog in this image?". Clear answers near 1 and 0 mean the images arrive. Your proxy's token count tells you too: an image adds hundreds to thousands of tokens, a text-only request is about 100.
+
 ## Documentation
 
 For more detailed information, see the [ADRs](docs/adr/) in this repository.
