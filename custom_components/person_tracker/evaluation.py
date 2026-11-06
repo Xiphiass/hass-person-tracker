@@ -78,24 +78,29 @@ def reference_ranges(people: list[Person]) -> dict[str, str]:
 
 
 def _person_question(person: Person, images: str | None, preamble: str | None) -> str:
-    """The yes/no question whether *person* is in the camera snapshot."""
+    """The yes/no question whether *person* is in the camera snapshot.
+
+    Neutral on purpose: a bar such as "only when clearly matching" turns
+    the question into "is it a clear match?", and a likely but not clear
+    match then gets a low probability. The minimum confidence is the bar.
+    """
     parts = [preamble] if preamble else []
-    parts.append(
-        "The first attached image is the camera snapshot. "
-        f"Is {person.name} visible in the camera snapshot?"
-    )
     if images:
         parts.append(
-            f"The reference photos of {person.name} are {images}; answer yes "
-            "only when someone in the snapshot clearly matches them, not when "
-            "they merely resemble them."
+            "The first attached image is the camera snapshot; the reference "
+            f"photos of {person.name} are {images}. Is {person.name}, shown in "
+            "the reference photos, visible in the camera snapshot?"
         )
     else:
-        parts.append(f"There are no reference photos of {person.name}.")
+        parts.append(
+            "The first attached image is the camera snapshot. Is "
+            f"{person.name} visible in the camera snapshot? There are no "
+            f"reference photos of {person.name}."
+        )
     if person.description:
         parts.append(
-            f"Description of {person.name}: {person.description}. A match on "
-            "the description alone, without a visible face, is uncertain."
+            f"Description of {person.name}, to tell household members apart: "
+            f"{person.description}."
         )
     return " ".join(parts)
 

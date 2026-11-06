@@ -182,6 +182,17 @@ AI_TASK_MOVE_CHECK_INSTRUCTIONS = (
     'in "unknown_persons".'
 )
 
+# The re-check and move check framing for the evaluate method (ADR 0010).
+# Unlike the prompts above it sets no bar for a match: the decision model's
+# probability is the confidence, and the minimum confidence is the bar.
+EVALUATE_RECHECK_PREAMBLE = (
+    "This snapshot was taken by the camera that last saw this household "
+    "member, to check whether they are still there."
+)
+EVALUATE_MOVE_CHECK_PREAMBLE = (
+    "This snapshot was taken to check whether this household member is here."
+)
+
 # The scale of the bbox coordinates the AI is asked for (0..BBOX_SCALE on
 # each axis), independent of the frame's pixel size: providers resize
 # images before the model sees them, so pixel coordinates don't map back.

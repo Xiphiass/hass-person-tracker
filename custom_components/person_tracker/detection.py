@@ -82,6 +82,8 @@ from .const import (
     AI_TASK_MOVE_CHECK_INSTRUCTIONS,
     AI_TASK_NAME,
     AI_TASK_RECHECK_INSTRUCTIONS,
+    EVALUATE_MOVE_CHECK_PREAMBLE,
+    EVALUATE_RECHECK_PREAMBLE,
     DOMAIN,
     FRAMES_DIR,
     RECHECK_LEAD_SECONDS,
@@ -273,6 +275,14 @@ def _build_instructions(people: list[Person], *, preamble: str | None = None) ->
         "camera "
         f"snapshot. {task}"
     )
+
+
+# The evaluate method's framing of a re-check or move check (ADR 0010): the
+# generate data prompts set a bar for a match and name response fields.
+_EVALUATE_PREAMBLES = {
+    AI_TASK_RECHECK_INSTRUCTIONS: EVALUATE_RECHECK_PREAMBLE,
+    AI_TASK_MOVE_CHECK_INSTRUCTIONS: EVALUATE_MOVE_CHECK_PREAMBLE,
+}
 
 
 class DetectionCoordinator:
@@ -512,7 +522,7 @@ class DetectionCoordinator:
                     self._data.ai_task_entity_id,
                     people,
                     attachments,
-                    preamble=preamble,
+                    preamble=_EVALUATE_PREAMBLES.get(preamble),
                     ask_unknown=preamble is None,
                 )
             else:

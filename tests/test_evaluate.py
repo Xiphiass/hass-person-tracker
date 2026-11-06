@@ -129,7 +129,9 @@ def test_questions_name_each_persons_reference_photos() -> None:
     assert asked == {"person_0": alice, "person_1": bob}
     assert set(questions) == {"person_0", "person_1", UNKNOWN_QUESTION}
     assert all(question["type"] == "noul" for question in questions.values())
-    assert "Is Alice visible" in questions["person_0"]["instructions"]
+    assert "Is Alice, shown in the reference photos, visible" in (
+        questions["person_0"]["instructions"]
+    )
     assert "images 2-3" in questions["person_0"]["instructions"]
     assert "long dark hair" in questions["person_0"]["instructions"]
     assert "image 4" in questions["person_1"]["instructions"]
@@ -143,6 +145,20 @@ def test_questions_carry_the_preamble_without_the_unknown_question() -> None:
     )
     assert set(questions) == {"person_0"}
     assert questions["person_0"]["instructions"].startswith("Re-check. ")
+
+
+def test_questions_set_no_bar_for_a_match() -> None:
+    """The minimum confidence is the bar, not the question's wording.
+
+    "Only when clearly matching" turned a likely match (0.65) into a low
+    probability (0.15) on a real decision model.
+    """
+    questions, _ = build_questions(
+        [_person("Alice", images=1, description="tall")], ask_unknown=False
+    )
+    text = questions["person_0"]["instructions"].lower()
+    for bar in ("clearly", "resemble", "only when", "uncertain"):
+        assert bar not in text
 
 
 def test_answers_become_the_generate_data_shape() -> None:
@@ -303,6 +319,31 @@ async def test_evaluate_failure_keeps_state(
             await _fire_edge(hass)
             assert _tracker_state(hass, entry.entry_id, "Alice") == "unknown"
     assert "for camera.front_door" in caplog.text
+
+
+async def test_recheck_uses_the_evaluate_preamble(
+    hass: HomeAssistant, evaluate_entity: None
+) -> None:
+    """A re-check frames the questions neutrally, without the generate data bar."""
+    add_camera(hass, CAMERA, area_name="Garden")
+    hass.states.async_set(TRIGGER, "off")
+
+    with _mock_evaluate(_answers(person_0=0.9)) as evaluate, _mock_image():
+        async with setup_entry(
+            hass, _evaluate_data(cooldown_seconds=0), people=[person("Alice")]
+        ) as entry:
+            coordinator = entry.runtime_data.coordinator
+            camera = entry.runtime_data.cameras[CAMERA]
+            people = list(entry.runtime_data.people.values())
+            await coordinator._async_identify(
+                camera, people, preamble=const.AI_TASK_RECHECK_INSTRUCTIONS
+            )
+
+    _, kwargs = evaluate.call_args
+    assert set(kwargs["questions"]) == {"person_0"}
+    instructions = kwargs["questions"]["person_0"]["instructions"]
+    assert instructions.startswith(const.EVALUATE_RECHECK_PREAMBLE)
+    assert const.AI_TASK_RECHECK_INSTRUCTIONS not in instructions
 
 
 # --- Setup and config flow ---------------------------------------------------
