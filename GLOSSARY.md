@@ -55,5 +55,9 @@ _Avoid_: poll, refresh
 **Move check**:
 An Identification run on every camera of the area the Supporting tracker has just moved the Person to, asking about that Person only, so a camera can confirm the move. A confirmation is a normal sighting; a miss changes nothing (ADR 0008).
 
+**Handoff check**:
+An Identification run on every other camera whose Detection is on, once a camera's Detection has gone off, asking about the Persons that camera last saw only. It catches a Person walking into a room whose Detection was already on. A confirmation is a normal sighting; a miss changes nothing (ADR 0011).
+_Avoid_: search, lost-sight search
+
 **Unknown snapshot**:
 A saved Snapshot in which no known Person was identified. Retained on disk with camera and timestamp metadata; the raw material for future self-learning (out of scope in v1).

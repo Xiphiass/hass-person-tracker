@@ -33,6 +33,7 @@ from .const import (
     CONF_COOLDOWN,
     CONF_DESCRIPTION,
     CONF_MIN_CONFIDENCE,
+    CONF_HANDOFF_CHECK,
     CONF_MOVE_CHECK,
     CONF_PERSON_NAME,
     CONF_RECHECK,
@@ -44,6 +45,7 @@ from .const import (
     DEFAULT_AI_METHOD,
     DEFAULT_COOLDOWN_SECONDS,
     DEFAULT_MIN_CONFIDENCE,
+    DEFAULT_HANDOFF_CHECK,
     DEFAULT_MOVE_CHECK,
     DEFAULT_RECHECK,
     DEFAULT_SNAPSHOT_SOURCE,
@@ -205,4 +207,5 @@ async def _async_build_entry_data(
         ),
         recheck=bool(entry.data.get(CONF_RECHECK, DEFAULT_RECHECK)),
         move_check=bool(entry.data.get(CONF_MOVE_CHECK, DEFAULT_MOVE_CHECK)),
+        handoff_check=bool(entry.data.get(CONF_HANDOFF_CHECK, DEFAULT_HANDOFF_CHECK)),
     )

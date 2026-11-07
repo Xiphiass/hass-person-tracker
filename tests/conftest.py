@@ -92,6 +92,7 @@ def entry_data(
     min_confidence: float | None = None,
     recheck: bool | None = None,
     move_check: bool | None = None,
+    handoff_check: bool | None = None,
 ) -> dict[str, Any]:
     """Build person_tracker config entry data (the global settings)."""
     data: dict[str, Any] = {
@@ -112,6 +113,8 @@ def entry_data(
         data[const.CONF_RECHECK] = recheck
     if move_check is not None:
         data[const.CONF_MOVE_CHECK] = move_check
+    if handoff_check is not None:
+        data[const.CONF_HANDOFF_CHECK] = handoff_check
     return data
 
 

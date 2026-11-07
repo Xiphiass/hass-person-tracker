@@ -26,6 +26,14 @@ only, worded like the re-check. A confirmation is a normal sighting (without
 the corroboration boost); a miss changes nothing. People moving into the
 same area at the same time share one run per camera.
 
+Handoff check (ADR 0011): a trigger only detects on an OFF -> ON edge, so
+someone walking into a room whose Detection is already on (because others
+are there) fires nothing. When a camera's Detection goes off (none of its
+triggers on) and stays off for a few seconds, the people it last saw are
+looked for on every other camera whose Detection is on, asking about those
+people only. Cooldown is ignored but claimed, as for a re-check. A
+confirmation is a normal sighting; a miss changes nothing.
+
 Corroboration (ADR 0009): once the AI has answered, a hit the Person's
 supporting tracker agrees with (same area, else same floor) is boosted
 before the minimum confidence comparison. The supporting tracker never
@@ -70,6 +78,7 @@ from homeassistant.helpers import area_registry as ar
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.event import (
     EventStateChangedData,
+    async_call_later,
     async_track_point_in_utc_time,
     async_track_state_change_event,
     async_track_time_interval,
@@ -78,14 +87,17 @@ from homeassistant.util import dt as dt_util
 
 from .const import (
     AI_METHOD_EVALUATE,
+    AI_TASK_HANDOFF_INSTRUCTIONS,
     AI_TASK_INSTRUCTIONS,
     AI_TASK_MOVE_CHECK_INSTRUCTIONS,
     AI_TASK_NAME,
     AI_TASK_RECHECK_INSTRUCTIONS,
+    EVALUATE_HANDOFF_PREAMBLE,
     EVALUATE_MOVE_CHECK_PREAMBLE,
     EVALUATE_RECHECK_PREAMBLE,
     DOMAIN,
     FRAMES_DIR,
+    HANDOFF_DELAY_SECONDS,
     RECHECK_LEAD_SECONDS,
     SNAPSHOT_SOURCE_STREAM,
     STREAM_FRAME_FFMPEG_OUTPUT,
@@ -282,6 +294,7 @@ def _build_instructions(people: list[Person], *, preamble: str | None = None) ->
 _EVALUATE_PREAMBLES = {
     AI_TASK_RECHECK_INSTRUCTIONS: EVALUATE_RECHECK_PREAMBLE,
     AI_TASK_MOVE_CHECK_INSTRUCTIONS: EVALUATE_MOVE_CHECK_PREAMBLE,
+    AI_TASK_HANDOFF_INSTRUCTIONS: EVALUATE_HANDOFF_PREAMBLE,
 }
 
 
@@ -291,7 +304,8 @@ class DetectionCoordinator:
     Per-camera cooldown: after a detection run, further trigger edges of the
     same camera are ignored until the configured cooldown has elapsed.
     Presence re-checks (ADR 0007) ignore the cooldown but claim it too;
-    move checks (Issue #34) leave out cameras in cooldown and claim it.
+    move checks (Issue #34) leave out cameras in cooldown and claim it;
+    handoff checks (ADR 0011) ignore it and claim it.
     """
 
     def __init__(self, hass: HomeAssistant, data: PersonTrackerData) -> None:
@@ -306,6 +320,8 @@ class DetectionCoordinator:
         self._recheck_timers: dict[str, Callable[[], None]] = {}
         # Pending move check timers (Issue #34), keyed by person subentry ID.
         self._move_check_timers: dict[str, Callable[[], None]] = {}
+        # Pending handoff check timers (ADR 0011), keyed by camera entity ID.
+        self._handoff_timers: dict[str, Callable[[], None]] = {}
         # The area ID each person's supporting tracker last settled in, so
         # a return to it (e.g. after a dropout) is no move.
         self._settled_areas: dict[str, str | None] = {}
@@ -358,11 +374,13 @@ class DetectionCoordinator:
             *self._unsubscribes,
             *self._recheck_timers.values(),
             *self._move_check_timers.values(),
+            *self._handoff_timers.values(),
         ):
             unsub()
         self._unsubscribes = []
         self._recheck_timers = {}
         self._move_check_timers = {}
+        self._handoff_timers = {}
 
     def _camera_for_trigger(self, trigger_entity_id: str) -> Camera | None:
         """The camera whose trigger list contains *trigger_entity_id*."""
@@ -372,19 +390,26 @@ class DetectionCoordinator:
         return None
 
     async def _async_on_trigger(self, event: Event[EventStateChangedData]) -> None:
-        """Handle a trigger state change; only OFF -> ON edges detect."""
+        """Handle a trigger state change.
+
+        An OFF -> ON edge detects (and cancels the camera's pending handoff
+        check); an ON -> OFF edge that leaves the camera's Detection off
+        schedules a handoff check (ADR 0011).
+        """
         old_state = event.data["old_state"]
         new_state = event.data["new_state"]
-        if (
-            old_state is None
-            or new_state is None
-            or old_state.state != STATE_OFF
-            or new_state.state != STATE_ON
-        ):
+        if old_state is None or new_state is None:
+            return
+        if old_state.state == STATE_ON and new_state.state == STATE_OFF:
+            if camera := self._camera_for_trigger(event.data["entity_id"]):
+                self._schedule_handoff_check(camera)
+            return
+        if old_state.state != STATE_OFF or new_state.state != STATE_ON:
             return
         camera = self._camera_for_trigger(event.data["entity_id"])
         if camera is None:
             return
+        self._cancel_handoff_check(camera)
         if self._in_cooldown(camera, dt_util.now()):
             _LOGGER.debug("Skipping detection run for %s (cooldown).", camera.entity_id)
             return
@@ -920,6 +945,102 @@ class DetectionCoordinator:
             _LOGGER.debug(
                 "Move check on %s did not confirm %s; the supporting tracker "
                 "keeps leading.",
+                camera.entity_id,
+                ", ".join(person.name for person in missing),
+            )
+        return True
+
+    def _detection_on(self, camera: Camera) -> bool:
+        """Whether any trigger of *camera* is on."""
+        return any(
+            (state := self._hass.states.get(trigger)) is not None
+            and state.state == STATE_ON
+            for trigger in camera.triggers
+        )
+
+    def _schedule_handoff_check(self, camera: Camera) -> None:
+        """Schedule *camera*'s handoff check if its Detection is now off."""
+        if not self._data.handoff_check or self._detection_on(camera):
+            return
+        self._cancel_handoff_check(camera)
+        self._handoff_timers[camera.entity_id] = async_call_later(
+            self._hass,
+            HANDOFF_DELAY_SECONDS,
+            partial(self._async_on_handoff_due, camera),
+        )
+
+    def _cancel_handoff_check(self, camera: Camera) -> None:
+        """Cancel *camera*'s pending handoff check, if any."""
+        if unsub := self._handoff_timers.pop(camera.entity_id, None):
+            unsub()
+
+    async def _async_on_handoff_due(self, camera: Camera, _now: datetime) -> None:
+        """*camera* lost sight: look for its people on the active cameras.
+
+        Asks about the people *camera* last saw whose sighting is current
+        and whom the authoritative tracker does not report away, on every
+        other camera whose Detection is on. Cooldown is ignored: a recent
+        run there may have been for the people already in that room, and
+        a run that did confirm someone moved their last camera away.
+        """
+        self._handoff_timers.pop(camera.entity_id, None)
+        if self._detection_on(camera):
+            return
+        now = dt_util.now()
+        people = [
+            person
+            for person in self._data.people.values()
+            if person.last_camera == camera.entity_id
+            and not is_expired(person.last_seen, person.ttl, now)
+            and not is_authoritative_away(self._hass, person)
+        ]
+        if not people:
+            return
+        cameras = [
+            other
+            for other in self._data.cameras.values()
+            if other is not camera and self._detection_on(other)
+        ]
+        if not cameras:
+            _LOGGER.debug(
+                "No other camera detects anyone; no handoff check for %s.",
+                ", ".join(person.name for person in people),
+            )
+            return
+        await self._async_refresh_reference_images()
+        if not (people := _with_reference_images(people)):
+            return
+        await asyncio.gather(
+            *(
+                self._async_run(
+                    other, partial(self._async_handoff_check, other, people)
+                )
+                for other in cameras
+            )
+        )
+
+    async def _async_handoff_check(self, camera: Camera, people: list[Person]) -> bool:
+        """Ask the AI whether *people* are on *camera* now (ADR 0011).
+
+        A confirmation is a normal, corroborated sighting: the active
+        Detection chose the camera, not the supporting tracker. A miss
+        changes nothing. Returns False when the run failed, True otherwise.
+        """
+        area = get_camera_area(self._hass, camera.entity_id)
+        if area is None:
+            _LOGGER.debug(
+                "Camera %s is not in an HA area; skipping the handoff check.",
+                camera.entity_id,
+            )
+            return True
+        missing = await self._async_ask(
+            camera, area, people, preamble=AI_TASK_HANDOFF_INSTRUCTIONS
+        )
+        if missing is None:
+            return False
+        if missing:
+            _LOGGER.debug(
+                "Handoff check on %s did not find %s.",
                 camera.entity_id,
                 ", ".join(person.name for person in missing),
             )

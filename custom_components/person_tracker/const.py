@@ -16,6 +16,7 @@ CONF_COOLDOWN = "cooldown"
 CONF_MIN_CONFIDENCE = "min_confidence"
 CONF_RECHECK = "recheck"
 CONF_MOVE_CHECK = "move_check"
+CONF_HANDOFF_CHECK = "handoff_check"
 
 # Each Person is a config subentry of this type.
 SUBENTRY_PERSON = "person"
@@ -63,6 +64,13 @@ SUPPORTING_SETTLE_SECONDS = 120
 DEFAULT_MOVE_CHECK = True
 # Moves into the same area that settle within this window share one run.
 MOVE_CHECK_GROUP_SECONDS = 10
+# Handoff check (ADR 0011): when a camera's Detection goes off, the people it
+# last saw are looked for on every other camera whose Detection is on, as a
+# room that is already occupied fires no new trigger edge for them. It runs
+# this long after the off edge, so the next room's sensor can settle, and a
+# new on edge of the same camera within it cancels it. On by default.
+DEFAULT_HANDOFF_CHECK = True
+HANDOFF_DELAY_SECONDS = 5
 # Supporting tracker corroboration (Issue #32 / ADR 0009): after
 # Identification, a hit on a camera in the supporting area gains the area
 # boost, else one on the supporting floor gains the floor boost, before the
@@ -182,7 +190,16 @@ AI_TASK_MOVE_CHECK_INSTRUCTIONS = (
     'in "unknown_persons".'
 )
 
-# The re-check and move check framing for the evaluate method (ADR 0010).
+# Handoff check prompt (ADR 0011), prepended like the re-check prompt.
+AI_TASK_HANDOFF_INSTRUCTIONS = (
+    "This snapshot is a handoff check: the listed household members just "
+    "left another camera's view, and it was taken to confirm whether they "
+    "are here now. Only report a listed household member who is clearly "
+    "visible now. Anyone else in the snapshot, including people who merely "
+    'resemble a listed household member, counts in "unknown_persons".'
+)
+
+# The re-check, move check and handoff check framing for the evaluate method (ADR 0010).
 # Unlike the prompts above it sets no bar for a match: the decision model's
 # probability is the confidence, and the minimum confidence is the bar.
 EVALUATE_RECHECK_PREAMBLE = (
@@ -191,6 +208,10 @@ EVALUATE_RECHECK_PREAMBLE = (
 )
 EVALUATE_MOVE_CHECK_PREAMBLE = (
     "This snapshot was taken to check whether this household member is here."
+)
+EVALUATE_HANDOFF_PREAMBLE = (
+    "This household member just left another camera's view. This snapshot "
+    "was taken to check whether they are here now."
 )
 
 # The scale of the bbox coordinates the AI is asked for (0..BBOX_SCALE on

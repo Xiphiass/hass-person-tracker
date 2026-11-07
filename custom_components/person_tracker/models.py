@@ -14,6 +14,7 @@ from .const import (
     DEFAULT_AI_METHOD,
     DEFAULT_COOLDOWN_SECONDS,
     DEFAULT_MIN_CONFIDENCE,
+    DEFAULT_HANDOFF_CHECK,
     DEFAULT_MOVE_CHECK,
     DEFAULT_RECHECK,
     DEFAULT_SNAPSHOT_SOURCE,
@@ -112,6 +113,9 @@ class PersonTrackerData:
     # Ask the cameras of the area a settled supporting move leads to whether
     # the person is there (Issue #34 / ADR 0008).
     move_check: bool = DEFAULT_MOVE_CHECK
+    # Look for the people a camera last saw on the other active cameras once
+    # its Detection goes off (ADR 0011).
+    handoff_check: bool = DEFAULT_HANDOFF_CHECK
     # The AI Task action that identifies Persons (ADR 0010).
     ai_method: str = DEFAULT_AI_METHOD
     # The detection loop; set during entry setup.
