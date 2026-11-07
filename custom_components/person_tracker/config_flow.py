@@ -46,6 +46,7 @@ from .const import (
     CONF_COOLDOWN,
     CONF_DESCRIPTION,
     CONF_MIN_CONFIDENCE,
+    CONF_HANDOFF_CHECK,
     CONF_MOVE_CHECK,
     CONF_PERSON_NAME,
     CONF_RECHECK,
@@ -58,6 +59,7 @@ from .const import (
     DEFAULT_AI_METHOD,
     DEFAULT_COOLDOWN_SECONDS,
     DEFAULT_MIN_CONFIDENCE,
+    DEFAULT_HANDOFF_CHECK,
     DEFAULT_MOVE_CHECK,
     DEFAULT_RECHECK,
     DEFAULT_SNAPSHOT_SOURCE,
@@ -166,6 +168,7 @@ _DETECTION_SCHEMA = probatio.Schema(
         ),
         probatio.Required(CONF_RECHECK): BooleanSelector(),
         probatio.Required(CONF_MOVE_CHECK): BooleanSelector(),
+        probatio.Required(CONF_HANDOFF_CHECK): BooleanSelector(),
     }
 )
 
@@ -313,7 +316,7 @@ class PersonTrackerConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_detection(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Set the cooldown, minimum confidence, re-check and move check."""
+        """Set the cooldown, minimum confidence and the follow-up checks."""
         errors: dict[str, str] = {}
         if user_input is not None:
             settings = {
@@ -321,6 +324,7 @@ class PersonTrackerConfigFlow(ConfigFlow, domain=DOMAIN):
                 CONF_MIN_CONFIDENCE: float(user_input[CONF_MIN_CONFIDENCE]),
                 CONF_RECHECK: bool(user_input[CONF_RECHECK]),
                 CONF_MOVE_CHECK: bool(user_input[CONF_MOVE_CHECK]),
+                CONF_HANDOFF_CHECK: bool(user_input[CONF_HANDOFF_CHECK]),
             }
             if self._reconfiguring:
                 return self._save(**settings)
@@ -341,6 +345,7 @@ class PersonTrackerConfigFlow(ConfigFlow, domain=DOMAIN):
             ),
             CONF_RECHECK: stored.get(CONF_RECHECK, DEFAULT_RECHECK),
             CONF_MOVE_CHECK: stored.get(CONF_MOVE_CHECK, DEFAULT_MOVE_CHECK),
+            CONF_HANDOFF_CHECK: stored.get(CONF_HANDOFF_CHECK, DEFAULT_HANDOFF_CHECK),
         }
         return self.async_show_form(
             step_id="detection",
