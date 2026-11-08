@@ -64,6 +64,7 @@ from .const import (
     DEFAULT_MOVE_CHECK,
     DEFAULT_RECHECK,
     DEFAULT_SNAPSHOT_SIZE,
+    DESCRIPTION_TEMPLATE_EXAMPLE,
     DEFAULT_SNAPSHOT_SOURCE,
     DEFAULT_TTL_MINUTES,
     DOMAIN,
@@ -79,6 +80,7 @@ from .evaluation import evaluate_available
 from .helpers import get_default_ai_task_entity_id, get_person_images_dir
 from .models import person_slug
 from .validation import (
+    description_error,
     ai_task_error,
     authoritative_tracker_error,
     new_camera_error,
@@ -476,6 +478,9 @@ class PersonSubentryFlow(ConfigSubentryFlow):
                 error := supporting_entity_error(self.hass, entity_id)
             ):
                 errors[key] = error
+        description = (user_input.get(CONF_DESCRIPTION) or "").strip()
+        if description and (error := description_error(self.hass, description)):
+            errors[CONF_DESCRIPTION] = error
         if errors:
             return {}, errors
         data: dict[str, Any] = {
@@ -487,7 +492,7 @@ class PersonSubentryFlow(ConfigSubentryFlow):
         for key in _SUPPORTING_KEYS:
             if entity_id := user_input.get(key):
                 data[key] = entity_id
-        if description := (user_input.get(CONF_DESCRIPTION) or "").strip():
+        if description:
             data[CONF_DESCRIPTION] = description
         return data, {}
 
@@ -502,6 +507,9 @@ class PersonSubentryFlow(ConfigSubentryFlow):
             placeholders = {"images_dir": str(get_person_images_dir(self.hass, name))}
         else:
             placeholders = {"people_dir": self.hass.config.path(DOMAIN, PEOPLE_DIR)}
+        # Translations can't hold "{{ }}" (they are placeholders there), so the
+        # template example of the description help comes in as a placeholder.
+        placeholders["template_example"] = DESCRIPTION_TEMPLATE_EXAMPLE
         return self.async_show_form(
             step_id=step_id,
             data_schema=self.add_suggested_values_to_schema(_PERSON_SCHEMA, values),
