@@ -17,6 +17,7 @@ from .const import (
     DEFAULT_HANDOFF_CHECK,
     DEFAULT_MOVE_CHECK,
     DEFAULT_RECHECK,
+    DEFAULT_SNAPSHOT_SIZE,
     DEFAULT_SNAPSHOT_SOURCE,
     DEFAULT_TTL_MINUTES,
     DOMAIN,
@@ -92,6 +93,8 @@ class Camera:
     triggers: list[str] = field(default_factory=list)
     # Where the frame for Identification comes from (Issue #47).
     snapshot_source: str = DEFAULT_SNAPSHOT_SOURCE
+    # Downscaling of that frame before Identification (experimental).
+    snapshot_size: str = DEFAULT_SNAPSHOT_SIZE
 
 
 @dataclass

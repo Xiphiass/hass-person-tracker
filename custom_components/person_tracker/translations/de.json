@@ -7,10 +7,12 @@
         "data": {
           "camera": "Kamera",
           "triggers": "Auslösende(r) Binärsensor(en)",
-          "snapshot_source": "Bildquelle"
+          "snapshot_source": "Bildquelle",
+          "snapshot_size": "Bildgröße"
         },
         "data_description": {
-          "snapshot_source": "Woher das Bild für die Erkennung kommt. Kamera-Schnappschuss nutzt das Standbild der Kamera. Videostream holt ein Bild in voller Auflösung aus dem Stream der Kamera; nutze es, wenn das Standbild niedrig aufgelöst ist (UniFi-Protect-2K-Kameras liefern Standbilder mit 640 x 360). Jede Erkennung dauert damit 1-2 Sekunden länger, und wenn der Stream ausfällt, wird das Standbild verwendet."
+          "snapshot_source": "Woher das Bild für die Erkennung kommt. Kamera-Schnappschuss nutzt das Standbild der Kamera. Videostream holt ein Bild in voller Auflösung aus dem Stream der Kamera; nutze es, wenn das Standbild niedrig aufgelöst ist (UniFi-Protect-2K-Kameras liefern Standbilder mit 640 x 360). Jede Erkennung dauert damit 1-2 Sekunden länger, und wenn der Stream ausfällt, wird das Standbild verwendet.",
+          "snapshot_size": "Experimentell. Verkleinert das Bild vor der Erkennung, sodass die kürzere Seite höchstens 1080 oder 960 px misst (z. B. wird 2688 x 1512 zu 1920 x 1080 oder 1707 x 960). Kleinere Bilder machen jede KI-Anfrage günstiger und schneller, zeigen aber weniger Details. Kleinere Bilder werden nie vergrößert."
         }
       },
       "cameras_more": {
@@ -26,10 +28,12 @@
         "data": {
           "camera": "Kamera",
           "triggers": "Auslösende(r) Binärsensor(en)",
-          "snapshot_source": "Bildquelle"
+          "snapshot_source": "Bildquelle",
+          "snapshot_size": "Bildgröße"
         },
         "data_description": {
-          "snapshot_source": "Woher das Bild für die Erkennung kommt. Kamera-Schnappschuss nutzt das Standbild der Kamera. Videostream holt ein Bild in voller Auflösung aus dem Stream der Kamera; nutze es, wenn das Standbild niedrig aufgelöst ist (UniFi-Protect-2K-Kameras liefern Standbilder mit 640 x 360). Jede Erkennung dauert damit 1-2 Sekunden länger, und wenn der Stream ausfällt, wird das Standbild verwendet."
+          "snapshot_source": "Woher das Bild für die Erkennung kommt. Kamera-Schnappschuss nutzt das Standbild der Kamera. Videostream holt ein Bild in voller Auflösung aus dem Stream der Kamera; nutze es, wenn das Standbild niedrig aufgelöst ist (UniFi-Protect-2K-Kameras liefern Standbilder mit 640 x 360). Jede Erkennung dauert damit 1-2 Sekunden länger, und wenn der Stream ausfällt, wird das Standbild verwendet.",
+          "snapshot_size": "Experimentell. Verkleinert das Bild vor der Erkennung, sodass die kürzere Seite höchstens 1080 oder 960 px misst (z. B. wird 2688 x 1512 zu 1920 x 1080 oder 1707 x 960). Kleinere Bilder machen jede KI-Anfrage günstiger und schneller, zeigen aber weniger Details. Kleinere Bilder werden nie vergrößert."
         }
       },
       "ai_task": {
@@ -83,10 +87,12 @@
         "description": "Auslöser und Bildquelle für {camera}.",
         "data": {
           "triggers": "Auslösende(r) Binärsensor(en)",
-          "snapshot_source": "Bildquelle"
+          "snapshot_source": "Bildquelle",
+          "snapshot_size": "Bildgröße"
         },
         "data_description": {
-          "snapshot_source": "Woher das Bild für die Erkennung kommt. Kamera-Schnappschuss nutzt das Standbild der Kamera. Videostream holt ein Bild in voller Auflösung aus dem Stream der Kamera; nutze es, wenn das Standbild niedrig aufgelöst ist (UniFi-Protect-2K-Kameras liefern Standbilder mit 640 x 360). Jede Erkennung dauert damit 1-2 Sekunden länger, und wenn der Stream ausfällt, wird das Standbild verwendet."
+          "snapshot_source": "Woher das Bild für die Erkennung kommt. Kamera-Schnappschuss nutzt das Standbild der Kamera. Videostream holt ein Bild in voller Auflösung aus dem Stream der Kamera; nutze es, wenn das Standbild niedrig aufgelöst ist (UniFi-Protect-2K-Kameras liefern Standbilder mit 640 x 360). Jede Erkennung dauert damit 1-2 Sekunden länger, und wenn der Stream ausfällt, wird das Standbild verwendet.",
+          "snapshot_size": "Experimentell. Verkleinert das Bild vor der Erkennung, sodass die kürzere Seite höchstens 1080 oder 960 px misst (z. B. wird 2688 x 1512 zu 1920 x 1080 oder 1707 x 960). Kleinere Bilder machen jede KI-Anfrage günstiger und schneller, zeigen aber weniger Details. Kleinere Bilder werden nie vergrößert."
         }
       },
       "camera_remove": {
@@ -189,6 +195,13 @@
       "options": {
         "camera": "Kamera-Schnappschuss",
         "stream": "Videostream (volle Auflösung)"
+      }
+    },
+    "snapshot_size": {
+      "options": {
+        "native": "Nativ (wie geliefert)",
+        "1080": "1080p",
+        "960": "960p"
       }
     },
     "ai_method": {

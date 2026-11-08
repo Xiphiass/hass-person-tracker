@@ -30,6 +30,8 @@ from .const import (
     REFERENCE_CACHE_DIR,
     REFERENCE_IMAGE_EXTENSIONS,
     REFERENCE_IMAGE_MAX_SIZE,
+    SNAPSHOT_JPEG_QUALITY,
+    SNAPSHOT_SIZE_NATIVE,
     SUPPORTING_SETTLE_SECONDS,
     THUMBNAIL_MIN_BOX_AREA,
     THUMBNAIL_PADDING,
@@ -280,6 +282,40 @@ def _downscaled_reference(folder: Path, path: Path) -> Path:
         _LOGGER.debug("Sending reference image %s as it is: %s", path, err)
         return path
     return cached
+
+
+def downscale_snapshot(
+    content: bytes, content_type: str, size: str
+) -> tuple[bytes, str]:
+    """*content* downscaled to the snapshot *size*, as JPEG bytes.
+
+    *size* is ``native`` (returned unchanged) or the maximum length in px of
+    the frame's shorter edge. A frame that already fits, or that can't be
+    decoded, is returned unchanged: a resize must never cost a detection.
+    """
+    if size == SNAPSHOT_SIZE_NATIVE:
+        return content, content_type
+    try:
+        limit = int(size)
+        with PILImage.open(io.BytesIO(content)) as image:
+            width, height = image.size
+            short = min(width, height)
+            if short <= limit:
+                return content, content_type
+            scale = limit / short
+            target = (max(1, round(width * scale)), max(1, round(height * scale)))
+            scaled = PILImageOps.exif_transpose(image).resize(
+                target, PILImage.Resampling.LANCZOS
+            )
+            if scaled.mode not in ("RGB", "L"):
+                scaled = scaled.convert("RGB")
+            out = io.BytesIO()
+            scaled.save(out, format="JPEG", quality=SNAPSHOT_JPEG_QUALITY)
+    except (OSError, ValueError) as err:
+        _LOGGER.debug("Sending the snapshot at its native size: %s", err)
+        return content, content_type
+    _LOGGER.debug("Snapshot downscaled from %sx%s to %sx%s.", width, height, *target)
+    return out.getvalue(), "image/jpeg"
 
 
 def get_unknown_snapshots_dir(hass: HomeAssistant) -> Path:

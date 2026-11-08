@@ -35,6 +35,7 @@ CONF_SUPPORTING_FLOOR_ENTITY = "supporting_floor_entity"
 CONF_CAMERA = "camera"
 CONF_TRIGGERS = "triggers"
 CONF_SNAPSHOT_SOURCE = "snapshot_source"
+CONF_SNAPSHOT_SIZE = "snapshot_size"
 
 # Config flow helper keys.
 CONF_ADD_CAMERA = "add_camera"
@@ -102,6 +103,17 @@ DEFAULT_SNAPSHOT_SOURCE = SNAPSHOT_SOURCE_CAMERA
 # ffmpeg output options for the stream frame: near-best JPEG quality (the
 # default is visibly blocky, and the AI needs the detail).
 STREAM_FRAME_FFMPEG_OUTPUT = "-q:v 2"
+# Snapshot size per camera (experimental): the frame from either source is
+# sent as it is ("native", the default) or downscaled so its shorter edge is
+# at most 1080 or 960 px, to trade detail against the size, and so the cost
+# and latency, of every AI request. Never upscaled; the aspect ratio is kept.
+# The AI and the thumbnails both use the downscaled frame.
+SNAPSHOT_SIZE_NATIVE = "native"
+SNAPSHOT_SIZE_1080 = "1080"
+SNAPSHOT_SIZE_960 = "960"
+SNAPSHOT_SIZES = [SNAPSHOT_SIZE_NATIVE, SNAPSHOT_SIZE_1080, SNAPSHOT_SIZE_960]
+DEFAULT_SNAPSHOT_SIZE = SNAPSHOT_SIZE_NATIVE
+SNAPSHOT_JPEG_QUALITY = 90
 
 # Identification method (ADR 0010): the AI Task action that identifies the
 # Persons on a Snapshot. ``generate_data`` (the default) asks for structured

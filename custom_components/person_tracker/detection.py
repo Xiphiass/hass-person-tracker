@@ -99,6 +99,7 @@ from .const import (
     FRAMES_DIR,
     HANDOFF_DELAY_SECONDS,
     RECHECK_LEAD_SECONDS,
+    SNAPSHOT_SIZE_NATIVE,
     SNAPSHOT_SOURCE_STREAM,
     STREAM_FRAME_FFMPEG_OUTPUT,
     SIGNAL_TRACKER_UPDATE_PERSON,
@@ -110,6 +111,7 @@ from .const import (
 from .evaluation import async_identify_by_evaluation, reference_ranges
 from .helpers import (
     delete_frame,
+    downscale_snapshot,
     discover_reference_images,
     get_camera_area,
     get_entity_area_id,
@@ -1055,14 +1057,22 @@ class DetectionCoordinator:
         """Fetch a snapshot of *camera*.
 
         A camera whose snapshot source is its video stream gets one frame of
-        the stream (Issue #47), or its own still image when that fails.
+        the stream (Issue #47), or its own still image when that fails. The
+        frame is then downscaled to the camera's snapshot size, if any.
         Raises HomeAssistantError when the camera can't provide one; the
         caller skips the run without changing state (Issue #5).
         """
+        image: Image | None = None
         if camera.snapshot_source == SNAPSHOT_SOURCE_STREAM:
-            if (image := await self._async_fetch_stream_frame(camera)) is not None:
-                return image
-        return await async_get_image(self._hass, camera.entity_id)
+            image = await self._async_fetch_stream_frame(camera)
+        if image is None:
+            image = await async_get_image(self._hass, camera.entity_id)
+        if camera.snapshot_size == SNAPSHOT_SIZE_NATIVE:
+            return image
+        content, content_type = await self._hass.async_add_executor_job(
+            downscale_snapshot, image.content, image.content_type, camera.snapshot_size
+        )
+        return Image(content_type=content_type, content=content)
 
     async def _async_fetch_stream_frame(self, camera: Camera) -> Image | None:
         """One frame of *camera*'s video stream, at its full resolution.

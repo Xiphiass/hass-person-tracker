@@ -30,8 +30,12 @@ BACK_DOOR = {
 
 
 def _stored(camera: dict[str, Any]) -> dict[str, Any]:
-    """*camera* as the flow stores it, with the default snapshot source."""
-    return {**camera, const.CONF_SNAPSHOT_SOURCE: const.SNAPSHOT_SOURCE_CAMERA}
+    """*camera* as the flow stores it, with the default snapshot settings."""
+    return {
+        **camera,
+        const.CONF_SNAPSHOT_SOURCE: const.SNAPSHOT_SOURCE_CAMERA,
+        const.CONF_SNAPSHOT_SIZE: const.SNAPSHOT_SIZE_NATIVE,
+    }
 
 
 @pytest.fixture

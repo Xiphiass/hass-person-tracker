@@ -53,6 +53,7 @@ from .const import (
     CONF_REMOVE_CAMERAS,
     CONF_SUPPORTING_AREA_ENTITY,
     CONF_SUPPORTING_FLOOR_ENTITY,
+    CONF_SNAPSHOT_SIZE,
     CONF_SNAPSHOT_SOURCE,
     CONF_TTL,
     CONF_TRIGGERS,
@@ -62,6 +63,7 @@ from .const import (
     DEFAULT_HANDOFF_CHECK,
     DEFAULT_MOVE_CHECK,
     DEFAULT_RECHECK,
+    DEFAULT_SNAPSHOT_SIZE,
     DEFAULT_SNAPSHOT_SOURCE,
     DEFAULT_TTL_MINUTES,
     DOMAIN,
@@ -69,6 +71,7 @@ from .const import (
     MAX_COOLDOWN_SECONDS,
     MAX_TTL_MINUTES,
     PEOPLE_DIR,
+    SNAPSHOT_SIZES,
     SNAPSHOT_SOURCES,
     SUBENTRY_PERSON,
 )
@@ -114,7 +117,16 @@ _SNAPSHOT_SOURCE_FIELD = {
             mode=SelectSelectorMode.LIST,
             translation_key=CONF_SNAPSHOT_SOURCE,
         )
-    )
+    ),
+    probatio.Optional(
+        CONF_SNAPSHOT_SIZE, default=DEFAULT_SNAPSHOT_SIZE
+    ): SelectSelector(
+        SelectSelectorConfig(
+            options=SNAPSHOT_SIZES,
+            mode=SelectSelectorMode.LIST,
+            translation_key=CONF_SNAPSHOT_SIZE,
+        )
+    ),
 }
 _TRIGGERS_SELECTOR = EntitySelector(
     EntitySelectorConfig(domain="binary_sensor", multiple=True)
@@ -270,6 +282,9 @@ class PersonTrackerConfigFlow(ConfigFlow, domain=DOMAIN):
                         CONF_SNAPSHOT_SOURCE: user_input.get(
                             CONF_SNAPSHOT_SOURCE, DEFAULT_SNAPSHOT_SOURCE
                         ),
+                        CONF_SNAPSHOT_SIZE: user_input.get(
+                            CONF_SNAPSHOT_SIZE, DEFAULT_SNAPSHOT_SIZE
+                        ),
                     }
                 )
                 if self._reconfiguring:
@@ -399,6 +414,9 @@ class PersonTrackerConfigFlow(ConfigFlow, domain=DOMAIN):
                     CONF_TRIGGERS: triggers,
                     CONF_SNAPSHOT_SOURCE: user_input.get(
                         CONF_SNAPSHOT_SOURCE, DEFAULT_SNAPSHOT_SOURCE
+                    ),
+                    CONF_SNAPSHOT_SIZE: user_input.get(
+                        CONF_SNAPSHOT_SIZE, DEFAULT_SNAPSHOT_SIZE
                     ),
                 }
                 return self._save(**{CONF_CAMERAS: self._cameras})
