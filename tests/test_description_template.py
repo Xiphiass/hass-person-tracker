@@ -118,5 +118,5 @@ async def test_flow_stores_the_template_and_rejects_a_broken_one(
 async def test_the_form_example_is_a_working_template(hass: HomeAssistant) -> None:
     """The example in the description help renders as promised."""
     assert render_description(hass, const.DESCRIPTION_TEMPLATE_EXAMPLE) == (
-        f"Toddler, {dt_util.now().year - 2023} years old, about 95 cm tall."
+        f"Toddler, {dt_util.now().year - 2023} years old"
     )

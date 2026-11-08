@@ -136,7 +136,7 @@
             "description": "Description (optional)"
           },
           "data_description": {
-            "description": "Distinguishing features, e.g. age, height, build, hair, glasses, beard. Sent to the AI to tell household members apart, and to rule someone out who clearly does not match (e.g. an adult vs. a small child). Describe what a camera can see. Can be a Home Assistant template, rendered on every detection, e.g. to keep an age current: {template_example}",
+            "description": "Visible features to tell people apart, e.g. age, height, build. Can rule someone out (adult vs. child). Supports templates: {template_example}",
             "supporting_area_entity": "A lower-priority, room-level location source, e.g. a BLE tracker's area sensor. Its state names an area (ID, name or alias).",
             "supporting_floor_entity": "Its state names a floor (ID, name or alias). Without it, the floor of the supporting area is used."
           }
@@ -153,7 +153,7 @@
             "description": "Description (optional)"
           },
           "data_description": {
-            "description": "Distinguishing features, e.g. age, height, build, hair, glasses, beard. Sent to the AI to tell household members apart, and to rule someone out who clearly does not match (e.g. an adult vs. a small child). Describe what a camera can see. Can be a Home Assistant template, rendered on every detection, e.g. to keep an age current: {template_example}",
+            "description": "Visible features to tell people apart, e.g. age, height, build. Can rule someone out (adult vs. child). Supports templates: {template_example}",
             "supporting_area_entity": "A lower-priority, room-level location source, e.g. a BLE tracker's area sensor. Its state names an area (ID, name or alias).",
             "supporting_floor_entity": "Its state names a floor (ID, name or alias). Without it, the floor of the supporting area is used."
           }

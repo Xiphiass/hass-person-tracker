@@ -142,9 +142,7 @@ ERR_OWN_SUPPORTING_ENTITY = "own_supporting_entity"
 ERR_INVALID_DESCRIPTION = "invalid_description"
 
 # Shown in the person form's description help: descriptions are HA templates.
-DESCRIPTION_TEMPLATE_EXAMPLE = (
-    "Toddler, {{ now().year - 2023 }} years old, about 95 cm tall."
-)
+DESCRIPTION_TEMPLATE_EXAMPLE = "Toddler, {{ now().year - 2023 }} years old"
 ERR_DUPLICATE_CAMERA = "duplicate_camera"
 ERR_INVALID_CAMERA = "invalid_camera"
 ERR_CAMERA_WITHOUT_AREA = "camera_without_area"
