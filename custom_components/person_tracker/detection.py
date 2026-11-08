@@ -1058,7 +1058,7 @@ class DetectionCoordinator:
 
         A camera whose snapshot source is its video stream gets one frame of
         the stream (Issue #47), or its own still image when that fails. The
-        frame is then downscaled to the camera's snapshot size, if any.
+        frame is then downscaled to the global snapshot size, if any.
         Raises HomeAssistantError when the camera can't provide one; the
         caller skips the run without changing state (Issue #5).
         """
@@ -1067,10 +1067,13 @@ class DetectionCoordinator:
             image = await self._async_fetch_stream_frame(camera)
         if image is None:
             image = await async_get_image(self._hass, camera.entity_id)
-        if camera.snapshot_size == SNAPSHOT_SIZE_NATIVE:
+        if self._data.snapshot_size == SNAPSHOT_SIZE_NATIVE:
             return image
         content, content_type = await self._hass.async_add_executor_job(
-            downscale_snapshot, image.content, image.content_type, camera.snapshot_size
+            downscale_snapshot,
+            image.content,
+            image.content_type,
+            self._data.snapshot_size,
         )
         return Image(content_type=content_type, content=content)
 

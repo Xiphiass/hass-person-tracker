@@ -17,6 +17,7 @@ CONF_MIN_CONFIDENCE = "min_confidence"
 CONF_RECHECK = "recheck"
 CONF_MOVE_CHECK = "move_check"
 CONF_HANDOFF_CHECK = "handoff_check"
+CONF_SNAPSHOT_SIZE = "snapshot_size"
 
 # Each Person is a config subentry of this type.
 SUBENTRY_PERSON = "person"
@@ -35,7 +36,6 @@ CONF_SUPPORTING_FLOOR_ENTITY = "supporting_floor_entity"
 CONF_CAMERA = "camera"
 CONF_TRIGGERS = "triggers"
 CONF_SNAPSHOT_SOURCE = "snapshot_source"
-CONF_SNAPSHOT_SIZE = "snapshot_size"
 
 # Config flow helper keys.
 CONF_ADD_CAMERA = "add_camera"
@@ -103,8 +103,8 @@ DEFAULT_SNAPSHOT_SOURCE = SNAPSHOT_SOURCE_CAMERA
 # ffmpeg output options for the stream frame: near-best JPEG quality (the
 # default is visibly blocky, and the AI needs the detail).
 STREAM_FRAME_FFMPEG_OUTPUT = "-q:v 2"
-# Snapshot size per camera (experimental): the frame from either source is
-# sent as it is ("native", the default) or downscaled so its shorter edge is
+# Snapshot size (experimental, global): every camera's frame, from either
+# source, is sent as it is ("native", the default) or downscaled so its shorter edge is
 # at most 1080 or 960 px, to trade detail against the size, and so the cost
 # and latency, of every AI request. Never upscaled; the aspect ratio is kept.
 # The AI and the thumbnails both use the downscaled frame.

@@ -30,12 +30,8 @@ BACK_DOOR = {
 
 
 def _stored(camera: dict[str, Any]) -> dict[str, Any]:
-    """*camera* as the flow stores it, with the default snapshot settings."""
-    return {
-        **camera,
-        const.CONF_SNAPSHOT_SOURCE: const.SNAPSHOT_SOURCE_CAMERA,
-        const.CONF_SNAPSHOT_SIZE: const.SNAPSHOT_SIZE_NATIVE,
-    }
+    """*camera* as the flow stores it, with the default snapshot source."""
+    return {**camera, const.CONF_SNAPSHOT_SOURCE: const.SNAPSHOT_SOURCE_CAMERA}
 
 
 @pytest.fixture
@@ -92,12 +88,14 @@ async def test_flow_creates_entry(
         recheck_key,
         move_check_key,
         handoff_key,
+        size_key,
     ) = result["data_schema"].schema
     assert cooldown_key.description == {"suggested_value": 30}
     assert confidence_key.description == {"suggested_value": 0.7}
     assert recheck_key.description == {"suggested_value": True}
     assert move_check_key.description == {"suggested_value": True}
     assert handoff_key.description == {"suggested_value": True}
+    assert size_key.description == {"suggested_value": "native"}
 
     result = await _configure(
         hass,
@@ -108,6 +106,7 @@ async def test_flow_creates_entry(
             const.CONF_RECHECK: False,
             const.CONF_MOVE_CHECK: False,
             const.CONF_HANDOFF_CHECK: False,
+            const.CONF_SNAPSHOT_SIZE: const.SNAPSHOT_SIZE_960,
         },
     )
     assert result["type"] is FlowResultType.CREATE_ENTRY
@@ -121,6 +120,7 @@ async def test_flow_creates_entry(
         const.CONF_RECHECK: False,
         const.CONF_MOVE_CHECK: False,
         const.CONF_HANDOFF_CHECK: False,
+        const.CONF_SNAPSHOT_SIZE: const.SNAPSHOT_SIZE_960,
     }
     entry = hass.config_entries.async_entries(DOMAIN)[0]
     assert entry.data == result["data"]
@@ -150,6 +150,7 @@ async def test_flow_multiple_cameras(
             const.CONF_RECHECK: True,
             const.CONF_MOVE_CHECK: True,
             const.CONF_HANDOFF_CHECK: True,
+            const.CONF_SNAPSHOT_SIZE: const.SNAPSHOT_SIZE_NATIVE,
         },
     )
     assert result["type"] is FlowResultType.CREATE_ENTRY
@@ -162,6 +163,7 @@ async def test_flow_multiple_cameras(
         const.CONF_RECHECK: True,
         const.CONF_MOVE_CHECK: True,
         const.CONF_HANDOFF_CHECK: True,
+        const.CONF_SNAPSHOT_SIZE: const.SNAPSHOT_SIZE_NATIVE,
     }
 
 
@@ -383,16 +385,19 @@ async def test_reconfigure_detection_settings(
             recheck_key,
             move_check_key,
             handoff_key,
+            size_key,
         ) = result["data_schema"].schema
         assert cooldown_key.description == {"suggested_value": 30}
         assert confidence_key.description == {"suggested_value": 0.7}
         assert recheck_key.description == {"suggested_value": True}
         assert move_check_key.description == {"suggested_value": True}
         assert handoff_key.description == {"suggested_value": True}
+        assert size_key.description == {"suggested_value": "native"}
         assert entry.runtime_data.min_confidence == 0.7
         assert entry.runtime_data.recheck is True
         assert entry.runtime_data.move_check is True
         assert entry.runtime_data.handoff_check is True
+        assert entry.runtime_data.snapshot_size == const.SNAPSHOT_SIZE_NATIVE
 
         result = await _configure(
             hass,
@@ -403,6 +408,7 @@ async def test_reconfigure_detection_settings(
                 const.CONF_RECHECK: False,
                 const.CONF_MOVE_CHECK: False,
                 const.CONF_HANDOFF_CHECK: False,
+                const.CONF_SNAPSHOT_SIZE: const.SNAPSHOT_SIZE_960,
             },
         )
         assert result["reason"] == "reconfigure_successful"
@@ -417,6 +423,8 @@ async def test_reconfigure_detection_settings(
         assert entry.runtime_data.move_check is False
         assert entry.data[const.CONF_HANDOFF_CHECK] is False
         assert entry.runtime_data.handoff_check is False
+        assert entry.data[const.CONF_SNAPSHOT_SIZE] == const.SNAPSHOT_SIZE_960
+        assert entry.runtime_data.snapshot_size == const.SNAPSHOT_SIZE_960
 
         # The stored values are now suggested.
         result = await _to_camera_form(hass, entry)
@@ -427,12 +435,14 @@ async def test_reconfigure_detection_settings(
             recheck_key,
             move_check_key,
             handoff_key,
+            size_key,
         ) = result["data_schema"].schema
         assert cooldown_key.description == {"suggested_value": 120}
         assert confidence_key.description == {"suggested_value": 0.85}
         assert recheck_key.description == {"suggested_value": False}
         assert move_check_key.description == {"suggested_value": False}
         assert handoff_key.description == {"suggested_value": False}
+        assert size_key.description == {"suggested_value": "960"}
 
 
 async def test_reconfigure_entry_in_setup_error(

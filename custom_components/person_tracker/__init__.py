@@ -196,7 +196,6 @@ async def _async_build_entry_data(
             snapshot_source=camera_data.get(
                 CONF_SNAPSHOT_SOURCE, DEFAULT_SNAPSHOT_SOURCE
             ),
-            snapshot_size=camera_data.get(CONF_SNAPSHOT_SIZE, DEFAULT_SNAPSHOT_SIZE),
         )
 
     return PersonTrackerData(
@@ -211,4 +210,5 @@ async def _async_build_entry_data(
         recheck=bool(entry.data.get(CONF_RECHECK, DEFAULT_RECHECK)),
         move_check=bool(entry.data.get(CONF_MOVE_CHECK, DEFAULT_MOVE_CHECK)),
         handoff_check=bool(entry.data.get(CONF_HANDOFF_CHECK, DEFAULT_HANDOFF_CHECK)),
+        snapshot_size=entry.data.get(CONF_SNAPSHOT_SIZE, DEFAULT_SNAPSHOT_SIZE),
     )

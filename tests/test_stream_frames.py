@@ -209,9 +209,7 @@ async def test_reconfigure_sets_the_snapshot_source(
         )
         assert result["reason"] == "reconfigure_successful"
         await hass.async_block_till_done()
-        assert entry.data[const.CONF_CAMERAS] == [
-            {**_stream_camera(), const.CONF_SNAPSHOT_SIZE: const.SNAPSHOT_SIZE_NATIVE}
-        ]
+        assert entry.data[const.CONF_CAMERAS] == [_stream_camera()]
         assert (
             entry.runtime_data.cameras[CAMERA].snapshot_source
             == const.SNAPSHOT_SOURCE_STREAM

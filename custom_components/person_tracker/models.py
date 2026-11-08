@@ -93,8 +93,6 @@ class Camera:
     triggers: list[str] = field(default_factory=list)
     # Where the frame for Identification comes from (Issue #47).
     snapshot_source: str = DEFAULT_SNAPSHOT_SOURCE
-    # Downscaling of that frame before Identification (experimental).
-    snapshot_size: str = DEFAULT_SNAPSHOT_SIZE
 
 
 @dataclass
@@ -119,6 +117,8 @@ class PersonTrackerData:
     # Look for the people a camera last saw on the other active cameras once
     # its Detection goes off (ADR 0011).
     handoff_check: bool = DEFAULT_HANDOFF_CHECK
+    # Downscaling of every Snapshot before Identification (experimental).
+    snapshot_size: str = DEFAULT_SNAPSHOT_SIZE
     # The AI Task action that identifies Persons (ADR 0010).
     ai_method: str = DEFAULT_AI_METHOD
     # The detection loop; set during entry setup.

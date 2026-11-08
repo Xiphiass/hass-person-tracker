@@ -1,9 +1,8 @@
-"""Snapshot size per camera: native, 1080p or 960p (experimental)."""
+"""Global snapshot size: native, 1080p or 960p (experimental)."""
 
 from __future__ import annotations
 
 import io
-from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -91,12 +90,6 @@ async def test_the_ai_gets_the_downscaled_frame(
     """The frame saved for the AI (and the thumbnail) is the resized one."""
     add_camera(hass, CAMERA, area_name="Garden")
     hass.states.async_set(TRIGGER, "off")
-    camera: dict[str, Any] = {
-        const.CONF_CAMERA: CAMERA,
-        const.CONF_TRIGGERS: [TRIGGER],
-    }
-    if size is not None:
-        camera[const.CONF_SNAPSHOT_SIZE] = size
     saved: list[tuple[int, int]] = []
 
     def _capture(hass_, camera_id, content, content_type):
@@ -123,41 +116,13 @@ async def test_the_ai_gets_the_downscaled_frame(
     ):
         async with setup_entry(
             hass,
-            entry_data(cameras=[camera], cooldown_seconds=0),
+            entry_data(cooldown_seconds=0, snapshot_size=size),
             people=[person("Alice")],
         ) as entry:
-            assert entry.runtime_data.cameras[CAMERA].snapshot_size == (
+            assert entry.runtime_data.snapshot_size == (
                 size or const.SNAPSHOT_SIZE_NATIVE
             )
             hass.states.async_set(TRIGGER, "on")
             await hass.async_block_till_done()
 
     assert saved == [expected]
-
-
-async def test_reconfigure_sets_the_snapshot_size(
-    hass: HomeAssistant, default_ai_task: None
-) -> None:
-    """Editing a camera changes its snapshot size."""
-    add_camera(hass, CAMERA, area_name="Garden")
-    hass.states.async_set(TRIGGER, "off")
-    async with setup_entry(hass) as entry:
-        result = await entry.start_reconfigure_flow(hass)
-        result = await hass.config_entries.flow.async_configure(
-            result["flow_id"], {"next_step_id": "camera_edit"}
-        )
-        result = await hass.config_entries.flow.async_configure(
-            result["flow_id"], {const.CONF_CAMERA: CAMERA}
-        )
-        result = await hass.config_entries.flow.async_configure(
-            result["flow_id"],
-            {
-                const.CONF_TRIGGERS: [TRIGGER],
-                const.CONF_SNAPSHOT_SIZE: const.SNAPSHOT_SIZE_960,
-            },
-        )
-        await hass.async_block_till_done()
-        entry = hass.config_entries.async_get_entry(entry.entry_id)
-        assert (
-            entry.runtime_data.cameras[CAMERA].snapshot_size == const.SNAPSHOT_SIZE_960
-        )

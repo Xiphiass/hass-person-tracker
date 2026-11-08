@@ -117,16 +117,7 @@ _SNAPSHOT_SOURCE_FIELD = {
             mode=SelectSelectorMode.LIST,
             translation_key=CONF_SNAPSHOT_SOURCE,
         )
-    ),
-    probatio.Optional(
-        CONF_SNAPSHOT_SIZE, default=DEFAULT_SNAPSHOT_SIZE
-    ): SelectSelector(
-        SelectSelectorConfig(
-            options=SNAPSHOT_SIZES,
-            mode=SelectSelectorMode.LIST,
-            translation_key=CONF_SNAPSHOT_SIZE,
-        )
-    ),
+    )
 }
 _TRIGGERS_SELECTOR = EntitySelector(
     EntitySelectorConfig(domain="binary_sensor", multiple=True)
@@ -181,6 +172,13 @@ _DETECTION_SCHEMA = probatio.Schema(
         probatio.Required(CONF_RECHECK): BooleanSelector(),
         probatio.Required(CONF_MOVE_CHECK): BooleanSelector(),
         probatio.Required(CONF_HANDOFF_CHECK): BooleanSelector(),
+        probatio.Required(CONF_SNAPSHOT_SIZE): SelectSelector(
+            SelectSelectorConfig(
+                options=SNAPSHOT_SIZES,
+                mode=SelectSelectorMode.LIST,
+                translation_key=CONF_SNAPSHOT_SIZE,
+            )
+        ),
     }
 )
 
@@ -282,9 +280,6 @@ class PersonTrackerConfigFlow(ConfigFlow, domain=DOMAIN):
                         CONF_SNAPSHOT_SOURCE: user_input.get(
                             CONF_SNAPSHOT_SOURCE, DEFAULT_SNAPSHOT_SOURCE
                         ),
-                        CONF_SNAPSHOT_SIZE: user_input.get(
-                            CONF_SNAPSHOT_SIZE, DEFAULT_SNAPSHOT_SIZE
-                        ),
                     }
                 )
                 if self._reconfiguring:
@@ -331,7 +326,7 @@ class PersonTrackerConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_detection(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Set the cooldown, minimum confidence and the follow-up checks."""
+        """Set the cooldown, minimum confidence, follow-up checks, snapshot size."""
         errors: dict[str, str] = {}
         if user_input is not None:
             settings = {
@@ -340,6 +335,7 @@ class PersonTrackerConfigFlow(ConfigFlow, domain=DOMAIN):
                 CONF_RECHECK: bool(user_input[CONF_RECHECK]),
                 CONF_MOVE_CHECK: bool(user_input[CONF_MOVE_CHECK]),
                 CONF_HANDOFF_CHECK: bool(user_input[CONF_HANDOFF_CHECK]),
+                CONF_SNAPSHOT_SIZE: user_input[CONF_SNAPSHOT_SIZE],
             }
             if self._reconfiguring:
                 return self._save(**settings)
@@ -361,6 +357,7 @@ class PersonTrackerConfigFlow(ConfigFlow, domain=DOMAIN):
             CONF_RECHECK: stored.get(CONF_RECHECK, DEFAULT_RECHECK),
             CONF_MOVE_CHECK: stored.get(CONF_MOVE_CHECK, DEFAULT_MOVE_CHECK),
             CONF_HANDOFF_CHECK: stored.get(CONF_HANDOFF_CHECK, DEFAULT_HANDOFF_CHECK),
+            CONF_SNAPSHOT_SIZE: stored.get(CONF_SNAPSHOT_SIZE, DEFAULT_SNAPSHOT_SIZE),
         }
         return self.async_show_form(
             step_id="detection",
@@ -414,9 +411,6 @@ class PersonTrackerConfigFlow(ConfigFlow, domain=DOMAIN):
                     CONF_TRIGGERS: triggers,
                     CONF_SNAPSHOT_SOURCE: user_input.get(
                         CONF_SNAPSHOT_SOURCE, DEFAULT_SNAPSHOT_SOURCE
-                    ),
-                    CONF_SNAPSHOT_SIZE: user_input.get(
-                        CONF_SNAPSHOT_SIZE, DEFAULT_SNAPSHOT_SIZE
                     ),
                 }
                 return self._save(**{CONF_CAMERAS: self._cameras})
