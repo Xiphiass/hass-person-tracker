@@ -329,7 +329,7 @@ async def test_any_trigger_of_the_camera_runs_detection(
             await _fire_edge(hass, "binary_sensor.front_motion")
 
             ai_task_mock.assert_awaited_once()
-            attachment = ai_task_mock.call_args.kwargs["attachments"][0]
+            attachment = ai_task_mock.call_args.kwargs["attachments"][-1]
             assert attachment["media_content_id"].startswith(FRAME_PREFIX)
 
 
@@ -598,13 +598,15 @@ async def test_reference_images_are_attached(
             await _fire_edge(hass)
 
             kwargs = ai_task_mock.call_args.kwargs
-            assert kwargs["attachments"][0]["media_content_id"].startswith(FRAME_PREFIX)
-            assert kwargs["attachments"][1:] == [
+            assert kwargs["attachments"][-1]["media_content_id"].startswith(
+                FRAME_PREFIX
+            )
+            assert kwargs["attachments"][:-1] == [
                 {"media_content_id": f"media-source://{DOMAIN}/people/Alice/a.jpg"},
                 {"media_content_id": f"media-source://{DOMAIN}/people/Alice/b.png"},
                 {"media_content_id": f"media-source://{DOMAIN}/people/Bob/bob.jpg"},
             ]
-            assert "images 2-3: Alice; image 4: Bob" in kwargs["instructions"]
+            assert "images 1-2: Alice; image 3: Bob" in kwargs["instructions"]
             assert const.AI_TASK_INSTRUCTIONS in kwargs["instructions"]
 
             # A removed image is no longer sent on the next run.
@@ -613,7 +615,7 @@ async def test_reference_images_are_attached(
 
             kwargs = ai_task_mock.call_args.kwargs
             assert len(kwargs["attachments"]) == 3
-            assert "image 2: Alice; image 3: Bob" in kwargs["instructions"]
+            assert "image 1: Alice; image 2: Bob" in kwargs["instructions"]
 
 
 async def test_reference_image_resolves_to_local_file(
@@ -650,7 +652,7 @@ async def test_ai_gets_the_snapshot_that_is_cropped(
 
     async def _generate(hass: HomeAssistant, **kwargs: Any) -> GenDataTaskResult:
         media = await media_source.async_resolve_media(
-            hass, kwargs["attachments"][0]["media_content_id"], None
+            hass, kwargs["attachments"][-1]["media_content_id"], None
         )
         seen["path"] = media.path
         seen["mime_type"] = media.mime_type

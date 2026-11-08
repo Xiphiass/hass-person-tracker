@@ -172,7 +172,7 @@ async def test_run_attaches_the_copy_and_it_resolves(
 
             ids = [
                 attachment["media_content_id"]
-                for attachment in ai_task_mock.call_args.kwargs["attachments"][1:]
+                for attachment in ai_task_mock.call_args.kwargs["attachments"][:-1]
             ]
             [copy] = get_reference_cache_dir(hass, "Alice Smith").iterdir()
             assert ids == [

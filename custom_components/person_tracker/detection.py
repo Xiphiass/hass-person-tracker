@@ -254,10 +254,11 @@ def _frame_id(path: Path) -> str:
 def _build_instructions(people: list[Person], *, preamble: str | None = None) -> str:
     """The identification prompt, listing the household members to look for.
 
-    Describes the attachment order: the snapshot first, then each of
-    *people*'s reference images in order, and appends the people's optional
-    descriptions. A *preamble* (the re-check framing of ADR 0007, or the move
-    check's) goes before the response instructions.
+    Describes the attachment order: each of *people*'s reference images in
+    order, then the snapshot last, and appends the people's optional
+    descriptions. The fixed response instructions come first and a
+    *preamble* (the re-check framing of ADR 0007, or the move or handoff
+    check's) last, so the text varies as late as possible (ADR 0012).
     """
     names = ", ".join(sorted(person.name for person in people)) or "no one"
     descriptions = "; ".join(
@@ -271,22 +272,23 @@ def _build_instructions(people: list[Person], *, preamble: str | None = None) ->
             "only to tell household members apart; a match on the "
             "description alone, without a visible face, is low confidence."
         )
-    task = AI_TASK_INSTRUCTIONS
-    if preamble:
-        task = f"{preamble} {task}"
     references = [
         f"{images}: {name}" for name, images in reference_ranges(people).items()
     ]
-    if not references:
-        return f"Household members to look for: {names}.{descriptions} {task}"
-    return (
-        f"Household members to look for: {names}.{descriptions} The first "
-        "attached image is the camera snapshot. The images after it are "
-        "reference photos of household members, use them to recognize who is "
-        f"who: {'; '.join(references)}. Report only people visible in the "
-        "camera "
-        f"snapshot. {task}"
-    )
+    parts = [
+        AI_TASK_INSTRUCTIONS,
+        f"Household members to look for: {names}.{descriptions}",
+    ]
+    if references:
+        parts.append(
+            "The images before the last are reference photos of household "
+            "members, use them to recognize who is who: "
+            f"{'; '.join(references)}. The last attached image is the camera "
+            "snapshot. Report only people visible in the camera snapshot."
+        )
+    if preamble:
+        parts.append(preamble)
+    return " ".join(parts)
 
 
 # The evaluate method's framing of a re-check or move check (ADR 0010): the
@@ -532,11 +534,14 @@ class DetectionCoordinator:
         except OSError as err:
             _LOGGER.error("Could not save frame of %s: %s", camera.entity_id, err)
             return None
-        attachments = [{"media_content_id": _frame_id(frame)}]
-        attachments.extend(
+        # References first, snapshot last: the reference images are the same
+        # every run, so a provider with prefix caching (e.g. vLLM) reuses
+        # them and only encodes the new snapshot (ADR 0012).
+        attachments = [
             {"media_content_id": _reference_image_id(self._hass, path)}
             for path in references
-        )
+        ]
+        attachments.append({"media_content_id": _frame_id(frame)})
         data: Any = None
         try:
             if self._data.ai_method == AI_METHOD_EVALUATE:
