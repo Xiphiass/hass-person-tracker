@@ -136,7 +136,7 @@
             "description": "Beschreibung (optional)"
           },
           "data_description": {
-            "description": "Unterscheidungsmerkmale, z. B. Alter, Größe, Statur, Haare, Brille, Bart. Wird an die KI geschickt, um Haushaltsmitglieder zu unterscheiden und jemanden auszuschließen, der eindeutig nicht passt (z. B. ein Erwachsener statt eines Kleinkinds). Beschreibe, was eine Kamera sehen kann. Darf ein Home-Assistant-Template sein, z. B. um das Alter aus dem Geburtsjahr zu berechnen (siehe README).",
+            "description": "Unterscheidungsmerkmale, z. B. Alter, Größe, Statur, Haare, Brille, Bart. Wird an die KI geschickt, um Haushaltsmitglieder zu unterscheiden und jemanden auszuschließen, der eindeutig nicht passt (z. B. ein Erwachsener statt eines Kleinkinds). Beschreibe, was eine Kamera sehen kann. Kann ein Home-Assistant-Template sein, das bei jeder Erkennung ausgewertet wird, z. B. um ein Alter aktuell zu halten: {template_example}",
             "supporting_area_entity": "Eine nachrangige Standortquelle auf Raumebene, z. B. der Bereichssensor eines BLE-Trackers. Ihr Zustand nennt einen Bereich (ID, Name oder Alias).",
             "supporting_floor_entity": "Ihr Zustand nennt eine Etage (ID, Name oder Alias). Ohne sie wird die Etage des unterstützenden Bereichs verwendet."
           }
@@ -153,7 +153,7 @@
             "description": "Beschreibung (optional)"
           },
           "data_description": {
-            "description": "Unterscheidungsmerkmale, z. B. Alter, Größe, Statur, Haare, Brille, Bart. Wird an die KI geschickt, um Haushaltsmitglieder zu unterscheiden und jemanden auszuschließen, der eindeutig nicht passt (z. B. ein Erwachsener statt eines Kleinkinds). Beschreibe, was eine Kamera sehen kann. Darf ein Home-Assistant-Template sein, z. B. um das Alter aus dem Geburtsjahr zu berechnen (siehe README).",
+            "description": "Unterscheidungsmerkmale, z. B. Alter, Größe, Statur, Haare, Brille, Bart. Wird an die KI geschickt, um Haushaltsmitglieder zu unterscheiden und jemanden auszuschließen, der eindeutig nicht passt (z. B. ein Erwachsener statt eines Kleinkinds). Beschreibe, was eine Kamera sehen kann. Kann ein Home-Assistant-Template sein, das bei jeder Erkennung ausgewertet wird, z. B. um ein Alter aktuell zu halten: {template_example}",
             "supporting_area_entity": "Eine nachrangige Standortquelle auf Raumebene, z. B. der Bereichssensor eines BLE-Trackers. Ihr Zustand nennt einen Bereich (ID, Name oder Alias).",
             "supporting_floor_entity": "Ihr Zustand nennt eine Etage (ID, Name oder Alias). Ohne sie wird die Etage des unterstützenden Bereichs verwendet."
           }

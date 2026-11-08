@@ -10,6 +10,7 @@ from homeassistant.util import dt as dt_util
 from custom_components.person_tracker import const
 from custom_components.person_tracker.detection import _build_instructions
 from custom_components.person_tracker.evaluation import build_questions, build_state
+from custom_components.person_tracker.helpers import render_description
 from custom_components.person_tracker.models import Person
 
 from .conftest import add_camera, entry_data, person, setup_entry
@@ -112,3 +113,10 @@ async def test_flow_stores_the_template_and_rejects_a_broken_one(
         )
         assert result["data"][const.CONF_DESCRIPTION] == AGE
         await hass.async_block_till_done()
+
+
+async def test_the_form_example_is_a_working_template(hass: HomeAssistant) -> None:
+    """The example in the description help renders as promised."""
+    assert render_description(hass, const.DESCRIPTION_TEMPLATE_EXAMPLE) == (
+        f"Toddler, {dt_util.now().year - 2023} years old, about 95 cm tall."
+    )

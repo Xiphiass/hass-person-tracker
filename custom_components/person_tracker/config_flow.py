@@ -64,6 +64,7 @@ from .const import (
     DEFAULT_MOVE_CHECK,
     DEFAULT_RECHECK,
     DEFAULT_SNAPSHOT_SIZE,
+    DESCRIPTION_TEMPLATE_EXAMPLE,
     DEFAULT_SNAPSHOT_SOURCE,
     DEFAULT_TTL_MINUTES,
     DOMAIN,
@@ -506,6 +507,9 @@ class PersonSubentryFlow(ConfigSubentryFlow):
             placeholders = {"images_dir": str(get_person_images_dir(self.hass, name))}
         else:
             placeholders = {"people_dir": self.hass.config.path(DOMAIN, PEOPLE_DIR)}
+        # Translations can't hold "{{ }}" (they are placeholders there), so the
+        # template example of the description help comes in as a placeholder.
+        placeholders["template_example"] = DESCRIPTION_TEMPLATE_EXAMPLE
         return self.async_show_form(
             step_id=step_id,
             data_schema=self.add_suggested_values_to_schema(_PERSON_SCHEMA, values),
