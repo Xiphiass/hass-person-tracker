@@ -130,7 +130,9 @@ async def test_recheck_keeps_a_still_person_home(
             await _move_to(hass, freezer, seen + TTL - LEAD)
             assert ai_mock.await_count == 2
             kwargs = ai_mock.call_args.kwargs
-            assert const.AI_TASK_RECHECK_INSTRUCTIONS in kwargs["instructions"]
+            # Fixed text first, the varying framing last (ADR 0012).
+            assert kwargs["instructions"].startswith(const.AI_TASK_INSTRUCTIONS)
+            assert kwargs["instructions"].endswith(const.AI_TASK_RECHECK_INSTRUCTIONS)
 
             # Past the original TTL, Alice is still home.
             await _move_to(hass, freezer, seen + TTL + timedelta(minutes=1))
@@ -201,7 +203,7 @@ async def test_recheck_asks_about_the_expiring_person_only(
 
             await _move_to(hass, freezer, seen + TTL - LEAD)
             kwargs = ai_mock.call_args.kwargs
-            assert kwargs["attachments"][1:] == [
+            assert kwargs["attachments"][:-1] == [
                 {"media_content_id": f"media-source://{DOMAIN}/people/Alice/ref.jpg"}
             ]
             assert "Household members to look for: Alice." in kwargs["instructions"]

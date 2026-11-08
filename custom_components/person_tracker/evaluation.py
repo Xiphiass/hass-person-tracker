@@ -61,12 +61,12 @@ def supports_evaluate(hass: HomeAssistant, entity_id: str) -> bool:
 def reference_ranges(people: list[Person]) -> dict[str, str]:
     """Which attached images are each of *people*'s reference photos.
 
-    The camera snapshot is image 1, then each person's reference images in
-    order, e.g. ``{"Alice": "images 2-3", "Bob": "image 4"}``. People
-    without reference images are left out.
+    The reference images come first, each person's in order, and the camera
+    snapshot last (see ``snapshot_image``), e.g. ``{"Alice": "images 1-2",
+    "Bob": "image 3"}``. People without reference images are left out.
     """
     ranges: dict[str, str] = {}
-    position = 2
+    position = 1
     for person in people:
         if count := len(person.reference_images):
             last = position + count - 1
@@ -75,6 +75,15 @@ def reference_ranges(people: list[Person]) -> dict[str, str]:
             )
             position = last + 1
     return ranges
+
+
+def snapshot_image(people: list[Person]) -> str:
+    """Which attached image is the camera snapshot: the last one.
+
+    It follows all of *people*'s reference images, so a request starts with
+    what stays the same from run to run (ADR 0012).
+    """
+    return f"image {sum(len(p.reference_images) for p in people) + 1}"
 
 
 def _person_question(person: Person, images: str | None, preamble: str | None) -> str:
@@ -87,13 +96,13 @@ def _person_question(person: Person, images: str | None, preamble: str | None) -
     parts = [preamble] if preamble else []
     if images:
         parts.append(
-            "The first attached image is the camera snapshot; the reference "
-            f"photos of {person.name} are {images}. Is {person.name}, shown in "
+            f"The reference photos of {person.name} are {images}; the last "
+            f"attached image is the camera snapshot. Is {person.name}, shown in "
             "the reference photos, visible in the camera snapshot?"
         )
     else:
         parts.append(
-            "The first attached image is the camera snapshot. Is "
+            "The last attached image is the camera snapshot. Is "
             f"{person.name} visible in the camera snapshot? There are no "
             f"reference photos of {person.name}."
         )
@@ -109,7 +118,7 @@ def _unknown_question(people: list[Person]) -> str:
     """The yes/no question whether anyone else is in the camera snapshot."""
     names = ", ".join(sorted(person.name for person in people)) or "no one"
     return (
-        "The first attached image is the camera snapshot; the images after it "
+        "The last attached image is the camera snapshot; the images before it "
         f"are reference photos of the household members {names}. Is anyone "
         "visible in the camera snapshot who is not one of these household "
         "members, or whom you cannot recognize as one of them?"
@@ -146,7 +155,7 @@ def build_state(people: list[Person]) -> dict[str, Any]:
     """The shared state the questions are evaluated against."""
     ranges = reference_ranges(people)
     return {
-        "camera_snapshot": "image 1",
+        "camera_snapshot": snapshot_image(people),
         "household_members": [
             {
                 "name": person.name,
@@ -228,7 +237,7 @@ async def async_identify_by_evaluation(
 ) -> dict[str, Any]:
     """Ask the decision model which of *people* the snapshot shows.
 
-    *attachments* are the snapshot followed by *people*'s reference images,
+    *attachments* are *people*'s reference images followed by the snapshot,
     as for generate_data. Returns the generate_data response shape. Errors
     of the AI Task call propagate; a malformed answer raises ValueError.
     """

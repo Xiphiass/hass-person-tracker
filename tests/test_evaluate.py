@@ -27,6 +27,7 @@ from custom_components.person_tracker.evaluation import (
     UNKNOWN_QUESTION,
     answers_to_data,
     build_questions,
+    build_state,
 )
 from custom_components.person_tracker.models import Person
 
@@ -132,10 +133,24 @@ def test_questions_name_each_persons_reference_photos() -> None:
     assert "Is Alice, shown in the reference photos, visible" in (
         questions["person_0"]["instructions"]
     )
-    assert "images 2-3" in questions["person_0"]["instructions"]
+    assert "images 1-2" in questions["person_0"]["instructions"]
     assert "long dark hair" in questions["person_0"]["instructions"]
-    assert "image 4" in questions["person_1"]["instructions"]
+    assert "image 3" in questions["person_1"]["instructions"]
     assert "Alice, Bob" in questions[UNKNOWN_QUESTION]["instructions"]
+
+
+def test_snapshot_comes_after_the_reference_photos() -> None:
+    """The snapshot is the last image, so the stable references lead (ADR 0012)."""
+    alice = _person("Alice", images=2)
+    bob = _person("Bob", images=1)
+
+    state = build_state([alice, bob])
+
+    assert state["camera_snapshot"] == "image 4"
+    assert [m["reference_photos"] for m in state["household_members"]] == [
+        "images 1-2",
+        "image 3",
+    ]
 
 
 def test_questions_carry_the_preamble_without_the_unknown_question() -> None:
@@ -236,7 +251,7 @@ async def test_detection_identifies_through_evaluate(
                 "person_1",
                 UNKNOWN_QUESTION,
             }
-            assert kwargs["attachments"][0]["media_content_id"].startswith(
+            assert kwargs["attachments"][-1]["media_content_id"].startswith(
                 f"media-source://{DOMAIN}/frames/"
             )
             assert kwargs["state"]["camera_snapshot"] == "image 1"
