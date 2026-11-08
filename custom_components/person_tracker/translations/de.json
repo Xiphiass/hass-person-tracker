@@ -136,7 +136,7 @@
             "description": "Beschreibung (optional)"
           },
           "data_description": {
-            "description": "Unterscheidungsmerkmale, z. B. Größe, Statur, Haare, Brille, Bart. Wird an die KI gesendet, damit sie Haushaltsmitglieder auch ohne sichtbares Gesicht unterscheiden kann.",
+            "description": "Unterscheidungsmerkmale, z. B. Alter, Größe, Statur, Haare, Brille, Bart. Wird an die KI geschickt, um Haushaltsmitglieder zu unterscheiden und jemanden auszuschließen, der eindeutig nicht passt (z. B. ein Erwachsener statt eines Kleinkinds). Beschreibe, was eine Kamera sehen kann. Darf ein Home-Assistant-Template sein, z. B. um das Alter aus dem Geburtsjahr zu berechnen (siehe README).",
             "supporting_area_entity": "Eine nachrangige Standortquelle auf Raumebene, z. B. der Bereichssensor eines BLE-Trackers. Ihr Zustand nennt einen Bereich (ID, Name oder Alias).",
             "supporting_floor_entity": "Ihr Zustand nennt eine Etage (ID, Name oder Alias). Ohne sie wird die Etage des unterstützenden Bereichs verwendet."
           }
@@ -153,7 +153,7 @@
             "description": "Beschreibung (optional)"
           },
           "data_description": {
-            "description": "Unterscheidungsmerkmale, z. B. Größe, Statur, Haare, Brille, Bart. Wird an die KI gesendet, damit sie Haushaltsmitglieder auch ohne sichtbares Gesicht unterscheiden kann.",
+            "description": "Unterscheidungsmerkmale, z. B. Alter, Größe, Statur, Haare, Brille, Bart. Wird an die KI geschickt, um Haushaltsmitglieder zu unterscheiden und jemanden auszuschließen, der eindeutig nicht passt (z. B. ein Erwachsener statt eines Kleinkinds). Beschreibe, was eine Kamera sehen kann. Darf ein Home-Assistant-Template sein, z. B. um das Alter aus dem Geburtsjahr zu berechnen (siehe README).",
             "supporting_area_entity": "Eine nachrangige Standortquelle auf Raumebene, z. B. der Bereichssensor eines BLE-Trackers. Ihr Zustand nennt einen Bereich (ID, Name oder Alias).",
             "supporting_floor_entity": "Ihr Zustand nennt eine Etage (ID, Name oder Alias). Ohne sie wird die Etage des unterstützenden Bereichs verwendet."
           }
@@ -164,7 +164,8 @@
         "unique_person": "Diese Person ist bereits konfiguriert.",
         "invalid_authoritative_tracker": "Der maßgebliche Tracker muss eine vorhandene device_tracker-Entität sein.",
         "invalid_supporting_entity": "Die unterstützende Tracker-Entität muss eine vorhandene Entität sein.",
-        "own_supporting_entity": "Der unterstützende Tracker darf keine Entität dieser Integration sein."
+        "own_supporting_entity": "Der unterstützende Tracker darf keine Entität dieser Integration sein.",
+        "invalid_description": "Die Beschreibung ist kein gültiges Home-Assistant-Template."
       },
       "abort": {
         "reconfigure_successful": "Die Neukonfiguration war erfolgreich."
