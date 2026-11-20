@@ -139,6 +139,10 @@ ERR_INVALID_PERSON_NAME = "invalid_person_name"
 ERR_INVALID_AUTHORITATIVE_TRACKER = "invalid_authoritative_tracker"
 ERR_INVALID_SUPPORTING_ENTITY = "invalid_supporting_entity"
 ERR_OWN_SUPPORTING_ENTITY = "own_supporting_entity"
+ERR_INVALID_DESCRIPTION = "invalid_description"
+
+# Shown in the person form's description help: descriptions are HA templates.
+DESCRIPTION_TEMPLATE_EXAMPLE = "Toddler, {{ now().year - 2023 }} years old"
 ERR_DUPLICATE_CAMERA = "duplicate_camera"
 ERR_INVALID_CAMERA = "invalid_camera"
 ERR_CAMERA_WITHOUT_AREA = "camera_without_area"

@@ -20,6 +20,7 @@ from homeassistant.helpers import area_registry as ar
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers import floor_registry as fr
+from homeassistant.helpers.template import Template
 from homeassistant.util import dt as dt_util
 
 from .const import (
@@ -195,6 +196,15 @@ def is_entity_pending(hass: HomeAssistant, entity_id: str) -> bool:
         return False
     state = hass.states.get(entity_id)
     return state is None or bool(state.attributes.get(ATTR_RESTORED))
+
+
+def render_description(hass: HomeAssistant, description: str) -> str:
+    """*description* rendered as an HA template (e.g. an age from a year).
+
+    Plain text renders as itself. Raises TemplateError when the template is
+    invalid or fails to render.
+    """
+    return Template(description, hass).async_render(parse_result=False).strip()
 
 
 def get_default_ai_task_entity_id(hass: HomeAssistant) -> str | None:

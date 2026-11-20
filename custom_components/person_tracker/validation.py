@@ -10,6 +10,7 @@ import re
 from collections.abc import Iterable
 
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import TemplateError
 from homeassistant.helpers import entity_registry as er
 
 from .const import (
@@ -23,6 +24,7 @@ from .const import (
     ERR_INVALID_AI_TASK_ENTITY,
     ERR_INVALID_AUTHORITATIVE_TRACKER,
     ERR_INVALID_CAMERA,
+    ERR_INVALID_DESCRIPTION,
     ERR_INVALID_PERSON_NAME,
     ERR_INVALID_SUPPORTING_ENTITY,
     ERR_INVALID_TRIGGER,
@@ -31,7 +33,7 @@ from .const import (
     ERR_UNIQUE_PERSON,
 )
 from .evaluation import evaluate_available, supports_evaluate
-from .helpers import get_entity_area_id
+from .helpers import get_entity_area_id, render_description
 from .models import person_slug
 
 _PERSON_NAME_MAX_LEN = 100
@@ -58,6 +60,15 @@ def person_name_error(name: str, taken_slugs: Iterable[str]) -> str | None:
         return ERR_INVALID_PERSON_NAME
     if person_slug(name) in taken_slugs:
         return ERR_UNIQUE_PERSON
+    return None
+
+
+def description_error(hass: HomeAssistant, description: str) -> str | None:
+    """A person description must render as an HA template."""
+    try:
+        render_description(hass, description)
+    except TemplateError:
+        return ERR_INVALID_DESCRIPTION
     return None
 
 

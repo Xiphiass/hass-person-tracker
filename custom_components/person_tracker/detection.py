@@ -73,7 +73,7 @@ from homeassistant.components.camera import (
 )
 from homeassistant.const import STATE_OFF, STATE_ON
 from homeassistant.core import Event, HomeAssistant, State
-from homeassistant.exceptions import HomeAssistantError
+from homeassistant.exceptions import HomeAssistantError, TemplateError
 from homeassistant.helpers import area_registry as ar
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.event import (
@@ -122,6 +122,7 @@ from .helpers import (
     purge_unknown_snapshots,
     is_authoritative_away,
     prepare_reference_images,
+    render_description,
     save_frame,
     save_person_thumbnail,
     save_unknown_snapshot,
@@ -253,33 +254,46 @@ def _frame_id(path: Path) -> str:
     return f"media-source://{DOMAIN}/{FRAMES_DIR}/{path.name}"
 
 
-def _build_instructions(people: list[Person], *, preamble: str | None = None) -> str:
+def _build_instructions(
+    people: list[Person],
+    *,
+    preamble: str | None = None,
+    descriptions: dict[str, str] | None = None,
+) -> str:
     """The identification prompt, listing the household members to look for.
 
     Describes the attachment order: each of *people*'s reference images in
     order, then the snapshot last, and appends the people's optional
-    descriptions. The fixed response instructions come first and a
+    descriptions (*descriptions* by name, rendered; the stored ones when
+    not given). The fixed response instructions come first and a
     *preamble* (the re-check framing of ADR 0007, or the move or handoff
     check's) last, so the text varies as late as possible (ADR 0012).
     """
     names = ", ".join(sorted(person.name for person in people)) or "no one"
-    descriptions = "; ".join(
-        f"{person.name}: {person.description}"
+    if descriptions is None:
+        descriptions = {p.name: p.description for p in people if p.description}
+    described = "; ".join(
+        f"{person.name}: {descriptions[person.name]}"
         for person in sorted(people, key=lambda p: p.name)
-        if person.description
+        if descriptions.get(person.name)
     )
-    if descriptions:
-        descriptions = (
-            f" Descriptions of household members: {descriptions}. Use them "
-            "only to tell household members apart; a match on the "
-            "description alone, without a visible face, is low confidence."
+    if described:
+        described = (
+            f" Descriptions of household members: {described}. Recognize "
+            "household members mainly by comparing them with the reference "
+            "photos; use the descriptions to tell them apart and to rule "
+            "them out: someone who clearly contradicts a member's "
+            "description (for example an adult where it describes a small "
+            "child) is not that member, however similar they look. A match "
+            "on the description alone, without a visible face, is low "
+            "confidence."
         )
     references = [
         f"{images}: {name}" for name, images in reference_ranges(people).items()
     ]
     parts = [
         AI_TASK_INSTRUCTIONS,
-        f"Household members to look for: {names}.{descriptions}",
+        f"Household members to look for: {names}.{described}",
     ]
     if references:
         parts.append(
@@ -319,6 +333,9 @@ class DetectionCoordinator:
         self._last_run: dict[str, datetime] = {}
         # Cameras whose stream frame failed, warned once (Issue #47).
         self._stream_frame_warned: set[str] = set()
+        # Persons whose description template failed, warned once until it
+        # renders again.
+        self._description_warned: set[str] = set()
         self._unsubscribes: list[Callable[[], None]] = []
         # Pending presence re-check timers, keyed by person subentry ID.
         self._recheck_timers: dict[str, Callable[[], None]] = {}
@@ -544,6 +561,7 @@ class DetectionCoordinator:
             for path in references
         ]
         attachments.append({"media_content_id": _frame_id(frame)})
+        descriptions = self._render_descriptions(people)
         data: Any = None
         try:
             if self._data.ai_method == AI_METHOD_EVALUATE:
@@ -556,13 +574,16 @@ class DetectionCoordinator:
                     attachments,
                     preamble=_EVALUATE_PREAMBLES.get(preamble),
                     ask_unknown=preamble is None,
+                    descriptions=descriptions,
                 )
             else:
                 result = await async_generate_data(
                     self._hass,
                     task_name=AI_TASK_NAME,
                     entity_id=self._data.ai_task_entity_id,
-                    instructions=_build_instructions(people, preamble=preamble),
+                    instructions=_build_instructions(
+                        people, preamble=preamble, descriptions=descriptions
+                    ),
                     structure=AI_RESULT_STRUCTURE,
                     attachments=attachments,
                 )
@@ -1052,6 +1073,35 @@ class DetectionCoordinator:
                 ", ".join(person.name for person in missing),
             )
         return True
+
+    def _render_descriptions(self, people: list[Person]) -> dict[str, str]:
+        """*people*'s descriptions by name, rendered as HA templates.
+
+        A template that fails (e.g. an entity it reads is gone) is sent as
+        its plain text, warned once per Person until it renders again: a
+        description must never stop Identification.
+        """
+        rendered: dict[str, str] = {}
+        for person in people:
+            if not person.description:
+                continue
+            try:
+                text = render_description(self._hass, person.description)
+            except TemplateError as err:
+                if person.name not in self._description_warned:
+                    self._description_warned.add(person.name)
+                    _LOGGER.warning(
+                        "Sending %s's description as plain text, its template "
+                        "failed: %s",
+                        person.name,
+                        err,
+                    )
+                text = person.description
+            else:
+                self._description_warned.discard(person.name)
+            if text:
+                rendered[person.name] = text
+        return rendered
 
     async def _async_fetch_snapshot(self, camera: Camera) -> Image:
         """Fetch a snapshot of *camera*.

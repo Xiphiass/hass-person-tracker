@@ -86,7 +86,12 @@ def snapshot_image(people: list[Person]) -> str:
     return f"image {sum(len(p.reference_images) for p in people) + 1}"
 
 
-def _person_question(person: Person, images: str | None, preamble: str | None) -> str:
+def _person_question(
+    person: Person,
+    images: str | None,
+    preamble: str | None,
+    description: str | None,
+) -> str:
     """The yes/no question whether *person* is in the camera snapshot.
 
     Neutral on purpose: a bar such as "only when clearly matching" turns
@@ -106,10 +111,12 @@ def _person_question(person: Person, images: str | None, preamble: str | None) -
             f"{person.name} visible in the camera snapshot? There are no "
             f"reference photos of {person.name}."
         )
-    if person.description:
+    if description:
         parts.append(
             f"Description of {person.name}, to tell household members apart: "
-            f"{person.description}."
+            f"{description}. Someone who plainly contradicts it (for example "
+            "an adult where it describes a small child) is not "
+            f"{person.name}, however similar they look."
         )
     return " ".join(parts)
 
@@ -125,14 +132,30 @@ def _unknown_question(people: list[Person]) -> str:
     )
 
 
+def _descriptions(
+    people: list[Person], descriptions: dict[str, str] | None
+) -> dict[str, str]:
+    """*descriptions*, or the stored ones of *people* when not given."""
+    if descriptions is not None:
+        return descriptions
+    return {p.name: p.description for p in people if p.description}
+
+
 def build_questions(
-    people: list[Person], *, preamble: str | None = None, ask_unknown: bool
+    people: list[Person],
+    *,
+    preamble: str | None = None,
+    ask_unknown: bool,
+    descriptions: dict[str, str] | None = None,
 ) -> tuple[dict[str, dict[str, Any]], dict[str, Person]]:
     """The evaluate questions for *people*, and which Person each one asks about.
 
     One question per Person, keyed ``person_<n>`` (Person names need not be
     valid keys), plus the unknown-person question when *ask_unknown*.
+    *descriptions* are the rendered descriptions by Person name; without
+    them the stored descriptions are used as they are.
     """
+    descriptions = _descriptions(people, descriptions)
     ranges = reference_ranges(people)
     questions: dict[str, dict[str, Any]] = {}
     asked: dict[str, Person] = {}
@@ -140,7 +163,12 @@ def build_questions(
         key = f"person_{index}"
         questions[key] = {
             "type": "noul",
-            "instructions": _person_question(person, ranges.get(person.name), preamble),
+            "instructions": _person_question(
+                person,
+                ranges.get(person.name),
+                preamble,
+                descriptions.get(person.name),
+            ),
         }
         asked[key] = person
     if ask_unknown:
@@ -151,8 +179,11 @@ def build_questions(
     return questions, asked
 
 
-def build_state(people: list[Person]) -> dict[str, Any]:
+def build_state(
+    people: list[Person], descriptions: dict[str, str] | None = None
+) -> dict[str, Any]:
     """The shared state the questions are evaluated against."""
+    descriptions = _descriptions(people, descriptions)
     ranges = reference_ranges(people)
     return {
         "camera_snapshot": snapshot_image(people),
@@ -160,7 +191,7 @@ def build_state(people: list[Person]) -> dict[str, Any]:
             {
                 "name": person.name,
                 "reference_photos": ranges.get(person.name),
-                "description": person.description,
+                "description": descriptions.get(person.name),
             }
             for person in people
         ],
@@ -234,6 +265,7 @@ async def async_identify_by_evaluation(
     *,
     preamble: str | None = None,
     ask_unknown: bool,
+    descriptions: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """Ask the decision model which of *people* the snapshot shows.
 
@@ -244,14 +276,17 @@ async def async_identify_by_evaluation(
     if async_evaluate is None:
         raise ValueError("ai_task.evaluate needs Home Assistant 2026.11 or newer")
     questions, asked = build_questions(
-        people, preamble=preamble, ask_unknown=ask_unknown
+        people,
+        preamble=preamble,
+        ask_unknown=ask_unknown,
+        descriptions=descriptions,
     )
     result = await async_evaluate(
         hass,
         task_name=AI_TASK_NAME,
         entity_id=entity_id,
         questions=questions,
-        state=build_state(people),
+        state=build_state(people, descriptions),
         attachments=attachments,
     )
     return answers_to_data(result.answers, asked, ask_unknown=ask_unknown)
