@@ -22,8 +22,10 @@ tracker that resolves to an area leads instead (ADR 0008). A supporting
 floor alone gives no presence. The supporting tracker also leads over a
 current sighting after a settled move the cameras did not see (Issue #31):
 its area changed after the sighting, differs from the camera's area, and
-has held for the settle period. The authoritative tracker reporting the
-person away outranks both: no source leads and the tracker is ``unknown``.
+has held for the settle period, and the cameras are done verifying it
+(ADR 0013): until then the camera keeps leading. The authoritative tracker
+reporting the person away outranks both: no source leads and the tracker is
+``unknown``.
 """
 
 from __future__ import annotations
@@ -71,6 +73,7 @@ def supporting_moved(
     supporting_changed: datetime | None,
     settle: timedelta,
     now: datetime,
+    verifying: bool = False,
 ) -> bool:
     """Whether the person moved somewhere the cameras did not see.
 
@@ -78,9 +81,15 @@ def supporting_moved(
     (*supporting_changed* is its entity's ``last_changed``), differs from
     the camera's area, and has held for *settle* as of *now*. A supporting
     area that disagreed since before the sighting is the one the camera just
-    proved wrong, so it is no move.
+    proved wrong, so it is no move. Nor is a move while the cameras are
+    still *verifying* it (ADR 0013): it may yet be proved wrong.
     """
-    if last_seen is None or supporting_area_id is None or supporting_changed is None:
+    if (
+        verifying
+        or last_seen is None
+        or supporting_area_id is None
+        or supporting_changed is None
+    ):
         return False
     return (
         supporting_changed > last_seen

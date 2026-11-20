@@ -19,12 +19,17 @@ within the re-check lead share one run. A person whom the supporting tracker
 leads after a move is left out (Issue #33 / ADR 0008): the re-check would
 snapshot the camera they left.
 
-Move check (Issue #34 / ADR 0008): once the supporting area settles on a new
-area that has cameras, and no camera sighting is newer than that change,
-every camera of the area not in cooldown is asked about the moved person
-only, worded like the re-check. A confirmation is a normal sighting (without
-the corroboration boost); a miss changes nothing. People moving into the
-same area at the same time share one run per camera.
+Move verification (ADR 0013): once the supporting area settles on a new
+area, and no camera sighting is newer than that change, the cameras verify
+the move before the supporting tracker may take the lead. While the camera
+sighting is current, the person's last camera is asked first whether they
+are still there (an old camera check, worded like the re-check); a
+confirmation is a normal sighting and the move is overruled. Otherwise every
+camera of the new area not in cooldown is asked about the moved person only
+(the move check, Issue #34). A confirmation is a normal sighting; a miss or
+a failed run lets the supporting tracker lead. Neither check is boosted by
+the supporting tracker. People moving into the same area at the same time
+share one run per camera.
 
 Handoff check (ADR 0011): a trigger only detects on an OFF -> ON edge, so
 someone walking into a room whose Detection is already on (because others
@@ -322,8 +327,8 @@ class DetectionCoordinator:
     Per-camera cooldown: after a detection run, further trigger edges of the
     same camera are ignored until the configured cooldown has elapsed.
     Presence re-checks (ADR 0007) ignore the cooldown but claim it too;
-    move checks (Issue #34) leave out cameras in cooldown and claim it;
-    handoff checks (ADR 0011) ignore it and claim it.
+    old camera checks (ADR 0013) and handoff checks (ADR 0011) do the same;
+    move checks (Issue #34) leave out cameras in cooldown and claim it.
     """
 
     def __init__(self, hass: HomeAssistant, data: PersonTrackerData) -> None:
@@ -339,7 +344,8 @@ class DetectionCoordinator:
         self._unsubscribes: list[Callable[[], None]] = []
         # Pending presence re-check timers, keyed by person subentry ID.
         self._recheck_timers: dict[str, Callable[[], None]] = {}
-        # Pending move check timers (Issue #34), keyed by person subentry ID.
+        # Pending move verification timers (ADR 0013), keyed by person
+        # subentry ID.
         self._move_check_timers: dict[str, Callable[[], None]] = {}
         # Pending handoff check timers (ADR 0011), keyed by camera entity ID.
         self._handoff_timers: dict[str, Callable[[], None]] = {}
@@ -362,7 +368,8 @@ class DetectionCoordinator:
                     self._hass, camera.triggers, self._async_on_trigger
                 )
             )
-        # Move checks (Issue #34) start when a supporting area entity changes.
+        # Move verifications (ADR 0013) start when a supporting area entity
+        # changes.
         if self._data.move_check and (
             supporting_area_entities := [
                 p.supporting_area_entity
@@ -844,11 +851,12 @@ class DetectionCoordinator:
     async def _async_on_supporting_change(
         self, event: Event[EventStateChangedData]
     ) -> None:
-        """A supporting area entity changed: (re)schedule its move checks.
+        """A supporting area entity changed: (re)schedule its verification.
 
         Only a changed state is a move; attribute updates keep the timer. A
-        state naming no area, or the area the tracker last settled in, is no
-        move and cancels a pending one.
+        state naming no area is no move and cancels a pending one; so is a
+        return to the area the tracker last settled in, unless a current
+        camera sighting places the person elsewhere.
         """
         old_state = event.data["old_state"]
         new_state = event.data["new_state"]
@@ -859,13 +867,26 @@ class DetectionCoordinator:
             if person.supporting_area_entity != event.data["entity_id"]:
                 continue
             self._cancel_move_check(person)
-            if area is not None and area.id != self._settled_areas.get(
-                person.subentry_id
+            if area is not None and (
+                area.id != self._settled_areas.get(person.subentry_id)
+                or self._contradicts_sighting(person, area)
             ):
                 self._schedule_move_check(person, new_state)
 
+    def _contradicts_sighting(self, person: Person, area: ar.AreaEntry) -> bool:
+        """Whether *person*'s current camera sighting is not in *area*."""
+        return (
+            not is_expired(person.last_seen, person.ttl, dt_util.now())
+            and person.area_id != area.id
+        )
+
     def _schedule_move_check(self, person: Person, state: State) -> None:
-        """Schedule *person*'s move check for when *state* has settled."""
+        """Schedule *person*'s move verification for when *state* settled.
+
+        The move counts as being verified from now on, so it cannot take the
+        lead from a current camera sighting before the cameras had their say.
+        """
+        person.move_verifying = state.last_changed
         self._move_check_timers[person.subentry_id] = async_track_point_in_utc_time(
             self._hass,
             partial(self._async_on_move_check_due, person),
@@ -873,17 +894,31 @@ class DetectionCoordinator:
         )
 
     def _cancel_move_check(self, person: Person) -> None:
-        """Cancel *person*'s pending move check, if any."""
+        """Cancel *person*'s pending move verification, if any."""
         if unsub := self._move_check_timers.pop(person.subentry_id, None):
             unsub()
+        self._end_move_verification(person, person.move_verifying)
+
+    def _end_move_verification(self, person: Person, token: datetime | None) -> None:
+        """End the verification of *person*'s move *token*; re-publish.
+
+        A newer move has a token of its own and stays under verification.
+        """
+        if token is None or person.move_verifying != token:
+            return
+        person.move_verifying = None
+        async_dispatcher_send(
+            self._hass, f"{SIGNAL_TRACKER_UPDATE_PERSON}{person.subentry_id}"
+        )
 
     def _move_check_area(self, person: Person) -> ar.AreaEntry | None:
-        """The area a move took *person* to, if it needs a move check.
+        """The area a move took *person* to, if it needs verifying.
 
-        That is while the supporting tracker leads (so not when the
-        authoritative tracker reports them away, nor when a current camera
-        sighting already places them there) and no camera sighting is newer
-        than the move. The caller decides whether the move has settled.
+        That is while the supporting tracker would lead once the move is
+        verified (so not when the authoritative tracker reports them away,
+        nor when a current camera sighting already places them there) and no
+        camera sighting is newer than the move. The caller decides whether
+        the move has settled.
         """
         changed = get_supporting_changed(self._hass, person)
         if changed is None or (
@@ -891,24 +926,139 @@ class DetectionCoordinator:
         ):
             return None
         area, _ = get_supporting_location(self._hass, person)
-        if get_leading_source(self._hass, person, area) != SOURCE_SUPPORTING:
+        if (
+            get_leading_source(self._hass, person, area, as_if_verified=True)
+            != SOURCE_SUPPORTING
+        ):
             return None
         return area
 
     async def _async_on_move_check_due(self, person: Person, _now: datetime) -> None:
-        """*person*'s supporting move settled: ask that area's cameras.
+        """*person*'s supporting move settled: verify it with the cameras.
 
         Everyone else whose move into the same area settles within the
-        grouping window joins the run, a few seconds early. Cameras in
-        cooldown are left out: their recent run already answered. A trigger
-        run that is still in flight holds the cooldown too, and if it then
-        fails, the move check is not retried.
+        grouping window joins, a few seconds early. However the verification
+        ends, the supporting tracker may lead afterwards unless a camera
+        confirmed the person somewhere.
         """
         self._move_check_timers.pop(person.subentry_id, None)
-        area, _ = get_supporting_location(self._hass, person)
-        self._settled_areas[person.subentry_id] = area.id if area else None
-        if (area := self._move_check_area(person)) is None:
+        tokens = {person.subentry_id: person.move_verifying}
+        people = [person]
+        try:
+            area, _ = get_supporting_location(self._hass, person)
+            self._settled_areas[person.subentry_id] = area.id if area else None
+            if (area := self._move_check_area(person)) is None:
+                return
+            now = dt_util.now()
+            window = timedelta(seconds=MOVE_CHECK_GROUP_SECONDS)
+            for other in self._data.people.values():
+                if (
+                    other is person
+                    or other.subentry_id not in self._move_check_timers
+                    or (changed := get_supporting_changed(self._hass, other)) is None
+                    or changed + timedelta(seconds=SUPPORTING_SETTLE_SECONDS)
+                    > now + window
+                    or (other_area := self._move_check_area(other)) is None
+                    or other_area.id != area.id
+                ):
+                    continue
+                tokens[other.subentry_id] = other.move_verifying
+                # Keeps the token: the verification ends below.
+                if unsub := self._move_check_timers.pop(other.subentry_id, None):
+                    unsub()
+                self._settled_areas[other.subentry_id] = area.id
+                people.append(other)
+            await self._async_verify_move(area, people)
+        finally:
+            for moved in people:
+                self._end_move_verification(moved, tokens[moved.subentry_id])
+
+    async def _async_verify_move(
+        self, area: ar.AreaEntry, people: list[Person]
+    ) -> None:
+        """Verify that *people* moved to *area* (ADR 0013).
+
+        First the old camera check of everyone with a current sighting, then
+        the move check of everyone it did not confirm. People without
+        reference images are not asked about.
+        """
+        await self._async_refresh_reference_images()
+        if not (people := _with_reference_images(people)):
             return
+        await self._async_old_camera_checks(people)
+        # A confirmation on the old camera made the move moot.
+        if people := [p for p in people if self._move_check_area(p) is not None]:
+            await self._async_move_checks(area, people)
+
+    async def _async_old_camera_checks(self, people: list[Person]) -> None:
+        """Ask each person's last camera whether they are still there.
+
+        Only for a current sighting: an expired one says nothing about where
+        the person is now. People last seen on the same camera share one
+        run; cooldown is ignored but claimed, as for a re-check.
+        """
+        now = dt_util.now()
+        by_camera: dict[str, list[Person]] = {}
+        for person in people:
+            if (
+                not is_expired(person.last_seen, person.ttl, now)
+                and person.last_camera in self._data.cameras
+            ):
+                by_camera.setdefault(person.last_camera, []).append(person)
+        await asyncio.gather(
+            *(
+                self._async_run(
+                    self._data.cameras[camera_id],
+                    partial(
+                        self._async_old_camera_check,
+                        self._data.cameras[camera_id],
+                        asked,
+                    ),
+                )
+                for camera_id, asked in by_camera.items()
+            )
+        )
+
+    async def _async_old_camera_check(
+        self, camera: Camera, people: list[Person]
+    ) -> bool:
+        """Ask the AI whether *people* are still on *camera* (ADR 0013).
+
+        A confirmation is a normal sighting, newer than the move, so the
+        camera keeps leading. Not corroborated: the supporting tracker
+        disagrees by definition, and a floor boost for the room it says the
+        person left would make no sense. Returns False when the run failed,
+        True otherwise.
+        """
+        area = get_camera_area(self._hass, camera.entity_id)
+        if area is None:
+            return True
+        missing = await self._async_ask(
+            camera,
+            area,
+            people,
+            preamble=AI_TASK_RECHECK_INSTRUCTIONS,
+            corroborate=False,
+        )
+        if missing is None:
+            return False
+        if missing:
+            _LOGGER.debug(
+                "Old camera check on %s did not confirm %s; checking the move.",
+                camera.entity_id,
+                ", ".join(person.name for person in missing),
+            )
+        return True
+
+    async def _async_move_checks(
+        self, area: ar.AreaEntry, people: list[Person]
+    ) -> None:
+        """Ask every camera of *area* not in cooldown about *people*.
+
+        Cameras in cooldown are left out: their recent run already answered.
+        A trigger run that is still in flight holds the cooldown too, and if
+        it then fails, the move check is not retried.
+        """
         cameras = [
             camera
             for camera in self._data.cameras.values()
@@ -917,24 +1067,6 @@ class DetectionCoordinator:
         if not cameras:
             return
         now = dt_util.now()
-        window = timedelta(seconds=MOVE_CHECK_GROUP_SECONDS)
-        people = [person]
-        for other in self._data.people.values():
-            if (
-                other is person
-                or other.subentry_id not in self._move_check_timers
-                or (changed := get_supporting_changed(self._hass, other)) is None
-                or changed + timedelta(seconds=SUPPORTING_SETTLE_SECONDS) > now + window
-                or (other_area := self._move_check_area(other)) is None
-                or other_area.id != area.id
-            ):
-                continue
-            self._cancel_move_check(other)
-            self._settled_areas[other.subentry_id] = area.id
-            people.append(other)
-        await self._async_refresh_reference_images()
-        if not (people := _with_reference_images(people)):
-            return
         if not (cameras := [c for c in cameras if not self._in_cooldown(c, now)]):
             _LOGGER.debug(
                 "Skipping the move check in %s: every camera is in cooldown.",
@@ -971,8 +1103,7 @@ class DetectionCoordinator:
             return False
         if missing:
             _LOGGER.debug(
-                "Move check on %s did not confirm %s; the supporting tracker "
-                "keeps leading.",
+                "Move check on %s did not confirm %s; the supporting tracker " "leads.",
                 camera.entity_id,
                 ", ".join(person.name for person in missing),
             )

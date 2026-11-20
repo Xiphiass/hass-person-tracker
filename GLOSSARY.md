@@ -45,15 +45,21 @@ The global threshold (0-1) below which an Identification is not trusted: the Per
 An optional external device_tracker per Person (e.g. their phone) that outranks the camera tracker: when it reports the Person away, the camera tracker is immediately demoted to unknown.
 
 **Supporting tracker**:
-An optional, lower-priority, room-level location source per Person (e.g. a BLE tracker), configured as an area entity and/or a floor entity. The camera sighting outranks it, and the Authoritative tracker can demote it. It leads once the camera sighting has expired, or after a move the cameras did not see, and it can raise an Identification's confidence (ADR 0008, ADR 0009). One per Person.
+An optional, lower-priority, room-level location source per Person (e.g. a BLE tracker), configured as an area entity and/or a floor entity. The camera sighting outranks it, and the Authoritative tracker can demote it. It leads once the camera sighting has expired, or after a move the cameras did not confirm (ADR 0013), and it can raise an Identification's confidence (ADR 0008, ADR 0009). One per Person.
 _Avoid_: secondary tracker, BLE tracker (BLE is one example)
 
 **Re-check**:
-An Identification run shortly before a Person's sighting expires, on the Person's last camera and asking about that Person only. A confirmation refreshes the sighting; anything else lets it expire (ADR 0007). Skipped while the Supporting tracker leads after a move (ADR 0008).
+An Identification run shortly before a Person's sighting expires, on the Person's last camera and asking about that Person only. A confirmation refreshes the sighting; anything else lets it expire (ADR 0007). Skipped while the Supporting tracker leads after a move (ADR 0008), since the Old camera check already asked that camera.
 _Avoid_: poll, refresh
 
+**Move verification**:
+What happens when the Supporting tracker settles in another area while a camera sighting is current: the camera keeps leading while the Old camera check and then the Move check run, and the Supporting tracker leads only if neither confirms the Person (ADR 0013).
+
+**Old camera check**:
+An Identification run on the Person's last camera once their Supporting tracker move has settled, asking about that Person only, worded like a Re-check. A confirmation is a normal sighting and overrules the move; a miss or a failed run goes on to the Move check (ADR 0013).
+
 **Move check**:
-An Identification run on every camera of the area the Supporting tracker has just moved the Person to, asking about that Person only, so a camera can confirm the move. A confirmation is a normal sighting; a miss changes nothing (ADR 0008).
+An Identification run on every camera of the area the Supporting tracker has just moved the Person to, asking about that Person only, so a camera can confirm the move. Runs after the Old camera check missed, or straight away when no camera sighting is current. A confirmation is a normal sighting; a miss lets the Supporting tracker lead (ADR 0008, ADR 0013).
 
 **Handoff check**:
 An Identification run on every other camera whose Detection is on, once a camera's Detection has gone off, asking about the Persons that camera last saw only. It catches a Person walking into a room whose Detection was already on. A confirmation is a normal sighting; a miss changes nothing (ADR 0011).
