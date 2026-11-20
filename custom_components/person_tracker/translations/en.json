@@ -51,13 +51,15 @@
           "min_confidence": "Minimum confidence",
           "recheck": "Re-check before expiry",
           "move_check": "Move check after a supporting tracker move",
-          "handoff_check": "Handoff check when a camera loses sight"
+          "handoff_check": "Handoff check when a camera loses sight",
+          "snapshot_size": "Snapshot size (experimental)"
         },
         "data_description": {
           "min_confidence": "Identifications below this confidence (0-1) update no tracker; the snapshot is kept as an unknown snapshot instead. Raise it if people get mixed up.",
           "recheck": "Shortly before a person's sighting expires, take one more snapshot from the camera that last saw them and ask the AI whether they are still there. Keeps people who sit still (and so trigger no new detection) at home, at the cost of one AI call per expiry.",
           "move_check": "When a person's supporting tracker settles in another area that has cameras, and no camera has seen them there yet, ask that area's cameras whether the person is there. A confirmation counts as a normal camera sighting. Costs at most one AI call per camera of that area per move; only affects people with a supporting area entity.",
-          "handoff_check": "When a camera's detection turns off, ask every other camera whose detection is still on whether the people that camera last saw are there now. Catches someone walking into a room that is already occupied, where no new detection fires. A confirmation counts as a normal camera sighting. Costs at most one AI call per active camera each time a camera loses sight of someone."
+          "handoff_check": "When a camera's detection turns off, ask every other camera whose detection is still on whether the people that camera last saw are there now. Catches someone walking into a room that is already occupied, where no new detection fires. A confirmation counts as a normal camera sighting. Costs at most one AI call per active camera each time a camera loses sight of someone.",
+          "snapshot_size": "Downscale every camera picture before identification so its shorter edge is at most 1080 or 960 px (e.g. 2688 x 1512 becomes 1920 x 1080 or 1707 x 960). Smaller pictures make each AI request cheaper and faster but show less detail. Smaller pictures are never enlarged."
         }
       },
       "reconfigure": {
@@ -189,6 +191,13 @@
       "options": {
         "camera": "Camera snapshot",
         "stream": "Video stream (full resolution)"
+      }
+    },
+    "snapshot_size": {
+      "options": {
+        "native": "Native (as delivered)",
+        "1080": "1080p",
+        "960": "960p"
       }
     },
     "ai_method": {

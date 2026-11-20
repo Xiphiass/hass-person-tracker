@@ -17,6 +17,7 @@ from .const import (
     DEFAULT_HANDOFF_CHECK,
     DEFAULT_MOVE_CHECK,
     DEFAULT_RECHECK,
+    DEFAULT_SNAPSHOT_SIZE,
     DEFAULT_SNAPSHOT_SOURCE,
     DEFAULT_TTL_MINUTES,
     DOMAIN,
@@ -116,6 +117,8 @@ class PersonTrackerData:
     # Look for the people a camera last saw on the other active cameras once
     # its Detection goes off (ADR 0011).
     handoff_check: bool = DEFAULT_HANDOFF_CHECK
+    # Downscaling of every Snapshot before Identification (experimental).
+    snapshot_size: str = DEFAULT_SNAPSHOT_SIZE
     # The AI Task action that identifies Persons (ADR 0010).
     ai_method: str = DEFAULT_AI_METHOD
     # The detection loop; set during entry setup.
