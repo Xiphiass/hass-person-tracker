@@ -154,13 +154,18 @@ def is_authoritative_away(hass: HomeAssistant, person: Person) -> bool:
 
 
 def get_leading_source(
-    hass: HomeAssistant, person: Person, supporting_area: ar.AreaEntry | None
+    hass: HomeAssistant,
+    person: Person,
+    supporting_area: ar.AreaEntry | None,
+    *,
+    as_if_verified: bool = False,
 ) -> str | None:
     """Which source places *person* at home (ADR 0008), as of now.
 
     The rule is ``lifetime.leading_source``; the tracker entity, the
-    re-check (Issue #33) and the move check (Issue #34) all ask here, so
-    they can't disagree.
+    re-check (Issue #33) and the move verification (ADR 0013) all ask here,
+    so they can't disagree. *as_if_verified* answers as if the cameras were
+    done verifying the supporting move: which source would then lead.
     """
     now = dt_util.now()
     return leading_source(
@@ -177,6 +182,8 @@ def get_leading_source(
             supporting_changed=get_supporting_changed(hass, person),
             settle=timedelta(seconds=SUPPORTING_SETTLE_SECONDS),
             now=now,
+            # The cameras are still verifying the move (ADR 0013).
+            verifying=person.move_verifying is not None and not as_if_verified,
         ),
     )
 

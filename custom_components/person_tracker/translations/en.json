@@ -50,13 +50,13 @@
           "cooldown": "Cooldown (seconds)",
           "min_confidence": "Minimum confidence",
           "recheck": "Re-check before expiry",
-          "move_check": "Move check after a supporting tracker move",
+          "move_check": "Verify supporting tracker moves with the cameras",
           "handoff_check": "Handoff check when a camera loses sight"
         },
         "data_description": {
           "min_confidence": "Identifications below this confidence (0-1) update no tracker; the snapshot is kept as an unknown snapshot instead. Raise it if people get mixed up.",
           "recheck": "Shortly before a person's sighting expires, take one more snapshot from the camera that last saw them and ask the AI whether they are still there. Keeps people who sit still (and so trigger no new detection) at home, at the cost of one AI call per expiry.",
-          "move_check": "When a person's supporting tracker settles in another area that has cameras, and no camera has seen them there yet, ask that area's cameras whether the person is there. A confirmation counts as a normal camera sighting. Costs at most one AI call per camera of that area per move; only affects people with a supporting area entity.",
+          "move_check": "When a person's supporting tracker settles in another area, first ask the camera that last saw them whether they are still there; if it does not confirm them, ask the cameras of the new area. The camera keeps leading meanwhile, and the supporting tracker only takes over when no camera confirms the person. A confirmation counts as a normal camera sighting. Costs at most one AI call on the old camera plus one per camera of the new area per move; only affects people with a supporting area entity. Off: a settled move takes over at once.",
           "handoff_check": "When a camera's detection turns off, ask every other camera whose detection is still on whether the people that camera last saw are there now. Catches someone walking into a room that is already occupied, where no new detection fires. A confirmation counts as a normal camera sighting. Costs at most one AI call per active camera each time a camera loses sight of someone."
         }
       },

@@ -2,7 +2,9 @@
 
 ADR 0008 refines ADR 0007: while the supporting tracker leads because the
 Person moved somewhere the cameras did not see, the re-check would snapshot
-the camera the Person left, so it is skipped. Uses the harness time mocking
+the camera the Person left, so it is skipped. That camera already had its
+say in the old camera check when the move settled (ADR 0013); here it
+misses. Uses the harness time mocking
 (``freezer`` + ``async_fire_time_changed``) to reach the settle, re-check and
 expiry times.
 """
@@ -18,6 +20,7 @@ import pytest
 from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
 
+from custom_components.person_tracker import const
 from custom_components.person_tracker.const import ATTR_AREA, ATTR_SOURCE
 
 from .conftest import entry_data, person, setup_entry
@@ -56,7 +59,10 @@ async def test_recheck_skipped_after_a_settled_move(
     hass.states.async_set(TRIGGER, "off")
     hass.states.async_set(AREA_ENTITY, "Garden")
 
-    with _mock_ai(_ai_result(["Alice"])) as ai_mock, _mock_image():
+    with (
+        _mock_ai(_ai_result(["Alice"]), _ai_result([])) as ai_mock,
+        _mock_image(),
+    ):
         async with setup_entry(
             hass,
             entry_data(cooldown_seconds=0),
@@ -70,16 +76,20 @@ async def test_recheck_skipped_after_a_settled_move(
             await _move_to(hass, freezer, seen + timedelta(minutes=1))
             hass.states.async_set(AREA_ENTITY, "Bedroom")
             await _move_to(hass, freezer, seen + timedelta(minutes=3))
+            # The old camera check misses: the move stands.
+            assert ai_mock.await_count == 2
+            kwargs = ai_mock.call_args.kwargs
+            assert const.AI_TASK_RECHECK_INSTRUCTIONS in kwargs["instructions"]
 
             with caplog.at_level(logging.DEBUG):
                 await _move_to(hass, freezer, seen + TTL - LEAD)
-            assert ai_mock.await_count == 1
+            assert ai_mock.await_count == 2
             assert "Skipping the re-check of Alice" in caplog.text
             assert "Bedroom" in caplog.text
 
             # No retry: the sighting expires, the supporting tracker leads.
             await _move_to(hass, freezer, seen + TTL + timedelta(minutes=1))
-            assert ai_mock.await_count == 1
+            assert ai_mock.await_count == 2
             assert _tracker_state(hass, "Alice") == "home"
             attrs = _tracker_attributes(hass, "Alice")
             assert attrs[ATTR_SOURCE] == AREA_ENTITY
@@ -96,7 +106,9 @@ async def test_shared_recheck_drops_only_the_moved_person(
     hass.states.async_set(BOB_AREA_ENTITY, "Garden")
 
     with (
-        _mock_ai(_ai_result(["Alice", "Bob"]), _ai_result(["Bob"])) as ai_mock,
+        _mock_ai(
+            _ai_result(["Alice", "Bob"]), _ai_result([]), _ai_result(["Bob"])
+        ) as ai_mock,
         _mock_image(),
     ):
         async with setup_entry(
@@ -118,7 +130,7 @@ async def test_shared_recheck_drops_only_the_moved_person(
 
             await _move_to(hass, freezer, seen + TTL - LEAD)
             await _move_to(hass, freezer, seen + TTL - LEAD + timedelta(seconds=30))
-            assert ai_mock.await_count == 2
+            assert ai_mock.await_count == 3
             kwargs = ai_mock.call_args.kwargs
             # The frame and Bob's reference image; Alice is not asked about.
             assert len(kwargs["attachments"]) == 2
@@ -135,7 +147,12 @@ async def test_no_run_when_everyone_moved(
     hass.states.async_set(AREA_ENTITY, "Garden")
     hass.states.async_set(BOB_AREA_ENTITY, "Garden")
 
-    with _mock_ai(_ai_result(["Alice", "Bob"])) as ai_mock, _mock_image():
+    with (
+        _mock_ai(
+            _ai_result(["Alice", "Bob"]), _ai_result([]), _ai_result([])
+        ) as ai_mock,
+        _mock_image(),
+    ):
         async with setup_entry(
             hass,
             entry_data(cooldown_seconds=0),
@@ -152,11 +169,13 @@ async def test_no_run_when_everyone_moved(
             await _move_to(hass, freezer, seen + timedelta(minutes=1))
             hass.states.async_set(AREA_ENTITY, "Bedroom")
             hass.states.async_set(BOB_AREA_ENTITY, "Kitchen")
+            # One old camera check per move; both miss.
             await _move_to(hass, freezer, seen + timedelta(minutes=3))
+            assert ai_mock.await_count == 3
 
             await _move_to(hass, freezer, seen + TTL - LEAD)
             await _move_to(hass, freezer, seen + TTL - LEAD + timedelta(seconds=30))
-            assert ai_mock.await_count == 1
+            assert ai_mock.await_count == 3
 
 
 async def test_recheck_runs_while_the_camera_leads(

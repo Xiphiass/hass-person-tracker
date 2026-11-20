@@ -16,7 +16,9 @@ not current, a supporting area keeps the state "home" with ``area`` and
 ``floor`` from the supporting tracker, and ``source`` names which source
 leads (Issue #30); the ``last_*`` attributes stay the camera's. The
 supporting tracker also leads over a current sighting once its area changed
-after the sighting and has held for a settle period (Issue #31).
+after the sighting, has held for a settle period (Issue #31) and no camera
+confirmed the person when the move was verified (ADR 0013); the detection
+coordinator re-publishes when that verification ends.
 The entity picture mirrors the picture of the HA person that tracks this
 entity, so dashboards can show the profile picture.
 """

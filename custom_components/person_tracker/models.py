@@ -65,6 +65,10 @@ class Person:
     # it was written. Shown by the person's image entity.
     last_thumbnail: Path | None = None
     last_thumbnail_updated: datetime | None = None
+    # The supporting area change the cameras are still verifying (ADR 0013),
+    # as its entity's ``last_changed``: until the verification ends, the
+    # move does not take the lead from a current camera sighting.
+    move_verifying: datetime | None = None
 
     @property
     def ttl(self) -> timedelta:
