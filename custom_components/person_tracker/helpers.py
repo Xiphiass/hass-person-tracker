@@ -20,6 +20,7 @@ from homeassistant.helpers import area_registry as ar
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers import floor_registry as fr
+from homeassistant.helpers.template import Template
 from homeassistant.util import dt as dt_util
 
 from .const import (
@@ -30,6 +31,8 @@ from .const import (
     REFERENCE_CACHE_DIR,
     REFERENCE_IMAGE_EXTENSIONS,
     REFERENCE_IMAGE_MAX_SIZE,
+    SNAPSHOT_JPEG_QUALITY,
+    SNAPSHOT_SIZE_NATIVE,
     SUPPORTING_SETTLE_SECONDS,
     THUMBNAIL_MIN_BOX_AREA,
     THUMBNAIL_PADDING,
@@ -202,6 +205,15 @@ def is_entity_pending(hass: HomeAssistant, entity_id: str) -> bool:
     return state is None or bool(state.attributes.get(ATTR_RESTORED))
 
 
+def render_description(hass: HomeAssistant, description: str) -> str:
+    """*description* rendered as an HA template (e.g. an age from a year).
+
+    Plain text renders as itself. Raises TemplateError when the template is
+    invalid or fails to render.
+    """
+    return Template(description, hass).async_render(parse_result=False).strip()
+
+
 def get_default_ai_task_entity_id(hass: HomeAssistant) -> str | None:
     """Return the default AI task entity, or None."""
     if preferences := hass.data.get(ai_task_component.const.DATA_PREFERENCES):
@@ -287,6 +299,40 @@ def _downscaled_reference(folder: Path, path: Path) -> Path:
         _LOGGER.debug("Sending reference image %s as it is: %s", path, err)
         return path
     return cached
+
+
+def downscale_snapshot(
+    content: bytes, content_type: str, size: str
+) -> tuple[bytes, str]:
+    """*content* downscaled to the snapshot *size*, as JPEG bytes.
+
+    *size* is ``native`` (returned unchanged) or the maximum length in px of
+    the frame's shorter edge. A frame that already fits, or that can't be
+    decoded, is returned unchanged: a resize must never cost a detection.
+    """
+    if size == SNAPSHOT_SIZE_NATIVE:
+        return content, content_type
+    try:
+        limit = int(size)
+        with PILImage.open(io.BytesIO(content)) as image:
+            width, height = image.size
+            short = min(width, height)
+            if short <= limit:
+                return content, content_type
+            scale = limit / short
+            target = (max(1, round(width * scale)), max(1, round(height * scale)))
+            scaled = PILImageOps.exif_transpose(image).resize(
+                target, PILImage.Resampling.LANCZOS
+            )
+            if scaled.mode not in ("RGB", "L"):
+                scaled = scaled.convert("RGB")
+            out = io.BytesIO()
+            scaled.save(out, format="JPEG", quality=SNAPSHOT_JPEG_QUALITY)
+    except (OSError, ValueError) as err:
+        _LOGGER.debug("Sending the snapshot at its native size: %s", err)
+        return content, content_type
+    _LOGGER.debug("Snapshot downscaled from %sx%s to %sx%s.", width, height, *target)
+    return out.getvalue(), "image/jpeg"
 
 
 def get_unknown_snapshots_dir(hass: HomeAssistant) -> Path:

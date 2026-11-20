@@ -39,6 +39,7 @@ from .const import (
     CONF_RECHECK,
     CONF_SUPPORTING_AREA_ENTITY,
     CONF_SUPPORTING_FLOOR_ENTITY,
+    CONF_SNAPSHOT_SIZE,
     CONF_SNAPSHOT_SOURCE,
     CONF_TTL,
     CONF_TRIGGERS,
@@ -48,6 +49,7 @@ from .const import (
     DEFAULT_HANDOFF_CHECK,
     DEFAULT_MOVE_CHECK,
     DEFAULT_RECHECK,
+    DEFAULT_SNAPSHOT_SIZE,
     DEFAULT_SNAPSHOT_SOURCE,
     DEFAULT_TTL_MINUTES,
     DOMAIN,
@@ -208,4 +210,5 @@ async def _async_build_entry_data(
         recheck=bool(entry.data.get(CONF_RECHECK, DEFAULT_RECHECK)),
         move_check=bool(entry.data.get(CONF_MOVE_CHECK, DEFAULT_MOVE_CHECK)),
         handoff_check=bool(entry.data.get(CONF_HANDOFF_CHECK, DEFAULT_HANDOFF_CHECK)),
+        snapshot_size=entry.data.get(CONF_SNAPSHOT_SIZE, DEFAULT_SNAPSHOT_SIZE),
     )

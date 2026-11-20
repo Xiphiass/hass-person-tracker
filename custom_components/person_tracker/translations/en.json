@@ -51,13 +51,15 @@
           "min_confidence": "Minimum confidence",
           "recheck": "Re-check before expiry",
           "move_check": "Verify supporting tracker moves with the cameras",
-          "handoff_check": "Handoff check when a camera loses sight"
+          "handoff_check": "Handoff check when a camera loses sight",
+          "snapshot_size": "Snapshot size (experimental)"
         },
         "data_description": {
           "min_confidence": "Identifications below this confidence (0-1) update no tracker; the snapshot is kept as an unknown snapshot instead. Raise it if people get mixed up.",
           "recheck": "Shortly before a person's sighting expires, take one more snapshot from the camera that last saw them and ask the AI whether they are still there. Keeps people who sit still (and so trigger no new detection) at home, at the cost of one AI call per expiry.",
           "move_check": "When a person's supporting tracker settles in another area, first ask the camera that last saw them whether they are still there; if it does not confirm them, ask the cameras of the new area. The camera keeps leading meanwhile, and the supporting tracker only takes over when no camera confirms the person. A confirmation counts as a normal camera sighting. Costs at most one AI call on the old camera plus one per camera of the new area per move; only affects people with a supporting area entity. Off: a settled move takes over at once.",
-          "handoff_check": "When a camera's detection turns off, ask every other camera whose detection is still on whether the people that camera last saw are there now. Catches someone walking into a room that is already occupied, where no new detection fires. A confirmation counts as a normal camera sighting. Costs at most one AI call per active camera each time a camera loses sight of someone."
+          "handoff_check": "When a camera's detection turns off, ask every other camera whose detection is still on whether the people that camera last saw are there now. Catches someone walking into a room that is already occupied, where no new detection fires. A confirmation counts as a normal camera sighting. Costs at most one AI call per active camera each time a camera loses sight of someone.",
+          "snapshot_size": "Downscale every camera picture before identification so its shorter edge is at most 1080 or 960 px (e.g. 2688 x 1512 becomes 1920 x 1080 or 1707 x 960). Smaller pictures make each AI request cheaper and faster but show less detail. Smaller pictures are never enlarged."
         }
       },
       "reconfigure": {
@@ -134,7 +136,7 @@
             "description": "Description (optional)"
           },
           "data_description": {
-            "description": "Distinguishing features, e.g. height, build, hair, glasses, beard. Sent to the AI to help tell household members apart when the face is not visible.",
+            "description": "Visible features to tell people apart, e.g. age, height, build. Can rule someone out (adult vs. child). Supports templates: {template_example}",
             "supporting_area_entity": "A lower-priority, room-level location source, e.g. a BLE tracker's area sensor. Its state names an area (ID, name or alias).",
             "supporting_floor_entity": "Its state names a floor (ID, name or alias). Without it, the floor of the supporting area is used."
           }
@@ -151,7 +153,7 @@
             "description": "Description (optional)"
           },
           "data_description": {
-            "description": "Distinguishing features, e.g. height, build, hair, glasses, beard. Sent to the AI to help tell household members apart when the face is not visible.",
+            "description": "Visible features to tell people apart, e.g. age, height, build. Can rule someone out (adult vs. child). Supports templates: {template_example}",
             "supporting_area_entity": "A lower-priority, room-level location source, e.g. a BLE tracker's area sensor. Its state names an area (ID, name or alias).",
             "supporting_floor_entity": "Its state names a floor (ID, name or alias). Without it, the floor of the supporting area is used."
           }
@@ -162,7 +164,8 @@
         "unique_person": "This person is already configured.",
         "invalid_authoritative_tracker": "The authoritative tracker must be an existing device_tracker entity.",
         "invalid_supporting_entity": "The supporting tracker entity must be an existing entity.",
-        "own_supporting_entity": "The supporting tracker cannot be an entity of this integration."
+        "own_supporting_entity": "The supporting tracker cannot be an entity of this integration.",
+        "invalid_description": "The description is not a valid Home Assistant template."
       },
       "abort": {
         "reconfigure_successful": "Re-configuration was successful."
@@ -189,6 +192,13 @@
       "options": {
         "camera": "Camera snapshot",
         "stream": "Video stream (full resolution)"
+      }
+    },
+    "snapshot_size": {
+      "options": {
+        "native": "Native (as delivered)",
+        "1080": "1080p",
+        "960": "960p"
       }
     },
     "ai_method": {
